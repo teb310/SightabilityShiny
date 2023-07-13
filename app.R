@@ -26,12 +26,12 @@ source("helpers.R")
 
 # Set your working directory paths and survey data file path
 wd <- getwd()
-input_wd <- paste0(getwd(),"/input")
-output_wd <- paste0(getwd(),"/output")
+input_wd <- paste0(getwd(), "/input")
+output_wd <- paste0(getwd(), "/output")
 
 # create input and output folders if you haven't already
-dir.create(paste0(wd,"/input"))
-dir.create(paste0(wd,"/output"))
+dir.create(paste0(wd, "/input"))
+dir.create(paste0(wd, "/output"))
 
 # Define UI ----
 ui <- fluidPage(
@@ -40,57 +40,51 @@ ui <- fluidPage(
   titlePanel("Roosevelt Elk Abundance Estimator"),
   tabsetPanel(
     type = "tabs",
-    tabPanel(
-      "Model",
-      sidebarLayout(
-        sidebarPanel(
-          br(),
-          fileInput("data_file", "Upload Excel File", accept = ".xlsx"),
-          actionButton("run_script", "Run Script"),
-          br(),
-          textOutput("script_status")
-        ),
-        mainPanel(
-          h3("Welcome"),
-          p("This app is designed to make statistical modelling of elk survey data quick and easy.
+    tabPanel("Model",
+             sidebarLayout(
+               sidebarPanel(
+                 br(),
+                 fileInput("data_file", "Upload Excel File", accept = ".xlsx"),
+                 actionButton("run_script", "Run Script"),
+                 br(),
+                 textOutput("script_status")
+               ),
+               mainPanel(
+                 h3("Welcome"),
+                 p(
+                   "This app is designed to make statistical modelling of elk survey data quick and easy.
             First, upload your formatted Excel datasheet on the left. Once the model has run, you will
             see a new file called 'Results_(date-time).csv' in the output folder of this app's directory. Load that
-            file into the Results tab to view and export your modelled elk abundance estimates."),
-          div(id = "plot-container",
-              img(src = "elk_galore.JPG", 
-                  style = "width: 90%; height: 90%; display: block; margin-left: auto; margin-right: auto;")
-          )
-        )
-      )
-    ),
-    tabPanel(
-      "Results",
-      sidebarLayout(
-        sidebarPanel(
-          uiOutput("sidebarText")
-        ),
-        mainPanel(
-          h3("Results"),
-          tabsetPanel(
-            id="tables_plots",
-            type="tabs",
-            tabPanel("Table",
-                     uiOutput("tableUI")
-                     ),
-            tabPanel("Plot",
-                     uiOutput("plotUI")
-                )
-          )
-        )
-      )
-    )
+            file into the Results tab to view and export your modelled elk abundance estimates."
+                 ),
+                 div(
+                   id = "plot-container",
+                   img(src = "elk_galore.JPG",
+                       style = "width: 90%; height: 90%; display: block; margin-left: auto; margin-right: auto;")
+                 )
+               )
+             )),
+    tabPanel("Results",
+             sidebarLayout(
+               sidebarPanel(uiOutput("sidebarText")),
+               mainPanel(
+                 h3("Results"),
+                 tabsetPanel(
+                   id = "tables_plots",
+                   type = "tabs",
+                   tabPanel("Table",
+                            uiOutput("tableUI")),
+                   tabPanel("Plot",
+                            uiOutput("plotUI"))
+                 )
+               )
+             ))
   )
 )
-    
+
 
 # Define server logic ----
 server <- function(input, output, session) {
-  
   # Reactive value defaults
   file_path <- reactiveVal(NULL)
   results_path <- reactiveVal(NULL)
@@ -100,7 +94,7 @@ server <- function(input, output, session) {
   
   # Load data from the uploaded Excel file
   observeEvent(input$data_file, {
-      file_path(input$data_file$datapath)
+    file_path(input$data_file$datapath)
   })
   
   # Run the R script on the uploaded file
@@ -108,18 +102,23 @@ server <- function(input, output, session) {
     if (!is.null(file_path())) {
       # Show progress bar while running the model
       withProgress(message = "Running the model...", detail = "This can take an hour or more.", {
-        source("Bayesian_condensed.R", local = TRUE, keep.source = FALSE, encoding = "UTF-8")
-      script_finished(TRUE)
+        source(
+          "Bayesian_condensed.R",
+          local = TRUE,
+          keep.source = FALSE,
+          encoding = "UTF-8"
+        )
+        script_finished(TRUE)
       })
-      }
+    }
   })
   
   # Display script status
   output$script_status <- renderText({
     if (script_finished()) {
       "Script finished running!"
-    # } else if (input$run_script) {
-    #   "Running...this can take an hour or more"
+      # } else if (input$run_script) {
+      #   "Running...this can take an hour or more"
     } else {
       "Upload a file and run the script."
     }
@@ -166,13 +165,13 @@ server <- function(input, output, session) {
       "EPU"
     } else {
       "year"
-      }
-    })
+    }
+  })
   
   ### x_var_data ----
   x_var_data <- reactive({
     req(input$year)
-    if(input$year == "All") {
+    if (input$year == "All") {
       "year"
     } else {
       "EPU"
@@ -181,32 +180,25 @@ server <- function(input, output, session) {
   
   ### ci_data ----
   ci_data <- reactive({
-    req(input$CI) # Ensure CI is available
     if (!is.null(input$CI) & 1 %in% input$CI & 2 %in% input$CI) {
       list(
         ucl = c(results()$ucl_95, results()$ucl_50),
         lcl = c(results()$lcl_95, results()$lcl_50)
       )
     } else if (1 %in% input$CI) {
-      list(
-        ucl = results()$ucl_95,
-        lcl = results()$lcl_95
-      )
+      list(ucl = results()$ucl_95,
+           lcl = results()$lcl_95)
     } else if (2 %in% input$CI) {
-      list(
-        ucl = results()$ucl_50,
-        lcl = results()$lcl_50
-      )
+      list(ucl = results()$ucl_50,
+           lcl = results()$lcl_50)
     } else {
-      list(
-        ucl = NULL,
-        lcl = NULL
-      )
+      list(ucl = NULL,
+           lcl = NULL)
     }
   })
   
   ## Construct table ----
-results_table <- reactive({
+  results_table <- reactive({
     req(results(), input$year, input$EPU)
     table_data <- results()
     if (input$year != "All") {
@@ -250,104 +242,174 @@ results_table <- reactive({
       )
     arrange(table, desc(Year), EPU)
   })
-
-## Construct plot ----
+  
+  ## Construct plot ----
   results_plot <- reactive({
-    req(results(), input$year, input$EPU, input$method, x_var_data(), ci_data(), facet())
+    req(results(),
+        input$year,
+        input$EPU,
+        input$method,
+        x_var_data(),
+        ci_data(),
+        facet())
     facet_col <- facet()
     x_var <- x_var_data()
     plot_data <- results()
     plot_data$x <- plot_data[[x_var]]
-    if(input$year != "All") {
-      plot_data <- filter(plot_data, plot_data$year==input$year)
+    if (input$year != "All") {
+      plot_data <- filter(plot_data, plot_data$year == input$year)
     }
-    if(input$EPU != "All") {
-      plot_data <- filter(plot_data, plot_data$EPU==input$EPU)
+    if (input$EPU != "All") {
+      plot_data <- filter(plot_data, plot_data$EPU == input$EPU)
     }
-    if(input$method !="All") {
-      plot_data <- filter(plot_data, plot_data$method==input$method)
+    if (input$method != "All") {
+      plot_data <- filter(plot_data, plot_data$method == input$method)
     }
     x_data <- plot_data[[x_var]]
-    p <- ggplot(plot_data, aes(x=x, y=estimate, fill =method)) +
-      labs(fill = "Method", color = "Method", shape = "Target") +
+    p <- ggplot(plot_data, aes(x = x, y = estimate, fill = method)) +
+      labs(fill = "Method",
+           color = "Method",
+           shape = "Target") +
       # name y axis
       scale_y_continuous("Estimated Abundance") +
       # use greyscale for point fill & color
       scale_fill_grey(start = 0, end = 0.7) +
       scale_color_grey(start = 0, end = 0.7) +
       # facet wrap
-      facet_wrap(as.formula(paste("~", facet())), scales="free", ncol=3)
+      facet_wrap(as.formula(paste("~", facet())), scales = "free", ncol =
+                   3)
     if (x_var_data() == "year") {
       # make sure there's only one label per year
       p <- p +
-      scale_x_continuous("Year", breaks = unique(plot_data$year))
+        scale_x_continuous("Year", breaks = unique(plot_data$year))
     } else {
       # name x axis
       p <- p +
-      scale_x_discrete("Elk Population Unit")
+        scale_x_discrete("Elk Population Unit")
     }
     # change x axis labels depending on input$year and input$EPU
-    if(x_var_data()=="year"){
-      if(input$EPU=="All"){
+    if (x_var_data() == "year") {
+      if (input$EPU == "All") {
         p <- p +
-          theme(axis.text.x = element_text(size=10, angle = 45, vjust = .8),
-                axis.text.y = element_text(size=10),
-                strip.text = element_text(size=10))
+          theme(
+            axis.text.x = element_text(
+              size = 10,
+              angle = 45,
+              vjust = .8
+            ),
+            axis.text.y = element_text(size = 10),
+            strip.text = element_text(size = 10)
+          )
       } else {
-      p <- p +
-        theme(axis.text.x = element_text(size=12),
-              axis.text.y = element_text(size=14),
-              strip.text = element_text(size=14))
+        p <- p +
+          theme(
+            axis.text.x = element_text(size = 12),
+            axis.text.y = element_text(size = 14),
+            strip.text = element_text(size = 14)
+          )
       }
     } else {
       p <- p  +
-        theme(axis.text.x = element_text(size=12, angle = 65, vjust = .5),
-              axis.text.y = element_text(size=14), 
-              strip.text = element_text(size = 14))
+        theme(
+          axis.text.x = element_text(
+            size = 12,
+            angle = 65,
+            vjust = .5
+          ),
+          axis.text.y = element_text(size = 14),
+          strip.text = element_text(size = 14)
+        )
     }
-    # add in 95% & 50% confidence intervals as dotted lines 
+    # add in 95% & 50% confidence intervals as dotted lines
     if (!is.null(ci_data()$ucl) & 1 %in% input$CI) {
       p <- p +
         # 95% (dashed)
-        geom_linerange(aes(x, ymin = lcl_95, ymax = ucl_95), linetype = 2, linewidth = 1, position = position_dodge(width = 0.3))
+        geom_linerange(
+          aes(x, ymin = lcl_95, ymax = ucl_95),
+          linetype = 2,
+          linewidth = 1,
+          position = position_dodge(width = 0.3)
+        )
     }
     if (!is.null(ci_data()$ucl) & 2 %in% input$CI) {
       p <- p +
         # 50% (solid)
-        geom_linerange(aes(x, ymin = lcl_50, ymax = ucl_50), linewidth = 1, position = position_dodge(width = 0.3))
+        geom_linerange(
+          aes(x, ymin = lcl_50, ymax = ucl_50),
+          linewidth = 1,
+          position = position_dodge(width = 0.3)
+        )
     }
-    if(x_var_data() == "year" & !is.null(input$Trend)){
-      if(input$Trend == T){
-      # Add a trendline for each set of points (colored by method)
-      p <- p +
-        geom_smooth(aes(color=method), method=lm, se=FALSE, linewidth=1, position = position_dodge(width=0.3))
+    if (x_var_data() == "year" & !is.null(input$Trend)) {
+      if (input$Trend == T) {
+        # Add a trendline for each set of points (colored by method)
+        p <- p +
+          geom_smooth(
+            aes(color = method),
+            method = lm,
+            se = FALSE,
+            linewidth = 1,
+            position = position_dodge(width = 0.3)
+          )
       }
     }
     if (input$Target == T) {
       if (x_var_data() == "year") {
         p <- p +
           # Add a horizontal dotted line at the target population value
-          geom_hline(aes(yintercept = target, linetype = "Target", color = "Target"), linetype = 3, color = 'red', linewidth = 1)
+          geom_hline(
+            aes(
+              yintercept = target,
+              linetype = "Target",
+              color = "Target"
+            ),
+            linetype = 3,
+            color = 'red',
+            linewidth = 1
+          )
       } else {
         p <- p +
           # add red point for target number
-          geom_point(aes(x = x, y = target, shape = "Target"), shape=8, size = 2, color = "red")
+          geom_point(
+            aes(
+              x = x,
+              y = target,
+              shape = "Target"
+            ),
+            shape = 8,
+            size = 2,
+            color = "red"
+          )
       }
     }
     p <- p +
       # Add theme elements
-      theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-            panel.background = element_blank(), axis.line = element_line(colour = "black"), 
-            axis.title.x = element_text(size=16), 
-            axis.title.y = element_text(size=16), legend.key.size = unit(0.75, 'in'), 
-            legend.text = element_text(size=12), legend.title = element_text(size=14))
-      # Add points on top of everything
-    if(input$EPU=="All" & input$year=="All"){
+      theme(
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"),
+        axis.title.x = element_text(size = 16),
+        axis.title.y = element_text(size = 16),
+        legend.key.size = unit(0.75, 'in'),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14)
+      )
+    # Add points on top of everything
+    if (input$EPU == "All" & input$year == "All") {
       p <- p +
-        geom_point(shape=21, size=2.5, position = position_dodge(width = 0.3))
+        geom_point(
+          shape = 21,
+          size = 2.5,
+          position = position_dodge(width = 0.3)
+        )
     } else {
       p <- p +
-        geom_point(shape=21, size=3.5, position = position_dodge(width = 0.3))
+        geom_point(
+          shape = 21,
+          size = 3.5,
+          position = position_dodge(width = 0.3)
+        )
     }
     p
   })
@@ -359,11 +421,12 @@ results_table <- reactive({
       "year",
       label = strong("Year"),
       choices = year_choices(),
-      selected = if(input$tables_plots=="Table"){
+      selected = if (input$tables_plots == "Table") {
         "All"
       } else {
         selected_year()
-      })
+      }
+    )
   })
   
   ### EPU_select ----
@@ -401,7 +464,7 @@ results_table <- reactive({
   ### other_options ----
   output$other_options <- renderUI({
     req(results())
-    if(input$year=="All"){
+    if (input$year == "All") {
       tagList(
         strong("Other Options"),
         checkboxInput("Target", "Target population", value = F),
@@ -418,23 +481,18 @@ results_table <- reactive({
   ### Export table ----
   output$export_table <- downloadHandler(
     filename = function() {
-      paste(
-        if(input$year=="All"){
-          "All_years"
-        } else {
-          input$year
-        }, 
-        if(input$EPU=="All"){
-          "All_EPUs"
-        } else {
-          input$EPU
-        },
-        if(input$method=="All"){
-          "All_methods"
-        } else {
-          input$method
-        },
-        ".csv", sep = "_")    },
+      paste(if (input$year == "All") {
+        "AllYears"
+      } else {
+        input$year
+      },
+      if (input$EPU == "All") {
+        "AllEPUs"
+      } else {
+        input$EPU
+      },
+      ".csv", sep = "_")
+    },
     content = function(file) {
       write.csv(results_table(), file, row.names = FALSE)
     }
@@ -447,8 +505,8 @@ results_table <- reactive({
   
   ### Export plot ----
   export_plot_height <- reactive({
-    if(input$year=="All" & input$EPU == "All"){
-      2.457*(ceiling(length(EPU_choices())-1)/3)
+    if (input$year == "All" & input$EPU == "All") {
+      2.457 * (ceiling(length(EPU_choices()) - 1) / 3)
     } else {
       9
     }
@@ -457,27 +515,50 @@ results_table <- reactive({
   
   output$export_plot <- downloadHandler(
     filename = function() {
-      paste(
-        if(input$year=="All"){
-          "All_years"
-        } else {
-          input$year
-        }, 
-        if(input$EPU=="All"){
-          "All_EPUs"
-        } else {
-          input$EPU
-        },
-        if(input$method=="All"){
-          "All_methods"
-        } else {
-          input$method
-        },
-        ".png", sep = "_")
+      paste(if (input$year == "All") {
+        "AllYears"
+      } else {
+        input$year
+      },
+      if (input$EPU == "All") {
+        "AllEPUs"
+      } else {
+        input$EPU
+      },
+      if (input$method == "All") {
+        "AllMethods"
+      } else {
+        input$method
+      },
+      if (!is.null(input$CI)) {
+        if (all(c(1, 2) %in% input$CI)) {
+          "AllCI"
+        } else if (1 %in% input$CI) {
+          "95CI"
+        } else if (2 %in% input$CI) {
+          "50CI"
+        }
+      },
+      if (input$Target == T) {
+        "withTarget"
+      },
+      if (input$year == "All" & !is.null(input$Trend)) {
+        if (input$Trend == T) {
+          "withTrend"
+        }
+      },
+      ".png",
+      sep = "_")
     },
     content = function(file) {
-      ggsave(file, plot = results_plot(), device = "png",
-             width = 12, height = export_plot_height(), units="in")
+      ggsave(
+        file,
+        plot = results_plot(),
+        device = "png",
+        width = 12,
+        height = export_plot_height(),
+        units = "in"
+      )
     }
   )
   output$Export_plot <- renderUI ({
@@ -511,7 +592,7 @@ results_table <- reactive({
         uiOutput("Export_plot")
       )
     }
-  })  
+  })
   
   
   ## Main panel UI objects -----
@@ -525,19 +606,21 @@ results_table <- reactive({
   })
   # Render UI
   output$tableUI <- renderUI({
-    if(!is.null(results_path())){
-    dataTableOutput("table", width = "100%", height = "100%")   
+    if (!is.null(results_path())) {
+      dataTableOutput("table", width = "100%", height = "100%")
     } else {
-    textOutput("no_file")
+      textOutput("no_file")
     }
   })
   
-  ### Plot tab ---- 
+  ### Plot tab ----
   # Create reactive plot height object
   plot_height <- reactive({
     req(input$method)
-    if(input$year=="All" & input$EPU == "All") {
-      paste0(ceiling((length(EPU_choices())-1)/3)*22, "vh")
+    if (input$year == "All" & input$EPU == "All") {
+      paste0(ceiling((length(
+        EPU_choices()
+      ) - 1) / 3) * 22, "vh")
     } else {
       "80vh"
     }
@@ -547,11 +630,11 @@ results_table <- reactive({
   
   # Render UI
   output$plotUI <- renderUI({
-    if(!is.null(results_plot())){
+    if (!is.null(results_plot())) {
       req(plot_height())
       plotOutput("plot", width = "100%", height = plot_height())
-      } else {
-       textOutput("no_file")
+    } else {
+      textOutput("no_file")
     }
   })
 }
