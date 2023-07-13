@@ -26,15 +26,16 @@ eff <- compile_sheets(file, "Summary") %>%
 eff$EPU <- name_fixer(eff$EPU)
 
 # Save EPU names from reliable source
-EPU.areas <- read_csv("EPU_areas.csv")
+setwd(wd)
+EPU.areas <- read_csv("www/EPU_areas.csv")
 EPU.list <- as.character(EPU.areas$EPU)
 
 ## 1.4 SIGHTABILITY DATA ####
 
-sight <- obs.all
+# we will have one sightability dataframe for all sexes/ages, which means we're assuming
+# equal sightability of bulls, cows, and calves -> may not be true.
 
-# filter out incidental observations
-sight <- sight %>%
+sight <- obs.all %>%
   # we'll create a field to tell us whether each year counts toward sightability data
   group_by(year) %>%
   mutate(sight = if_else(all(c("Inventory", "Telemetry") %in% unique(survey.type)), TRUE, FALSE)) %>%
@@ -70,14 +71,14 @@ obs <- inner_join(obs.all, eff %>% select(year, EPU), by=c("EPU","year")) %>%
     voc = voc,
     .keep="unused") %>%
   # only keep inventory & capture surveys
-  filter(survey.type=="Inventory" | survey.type=="Capture")
+  filter(survey.type=="Inventory" | survey.type=="Capture" | survey.type=="Telemetry")
 
 # make sure all totals = sum of cows, calves, etc
 
-obs1 <- obs %>%
+obs <- obs %>%
   mutate(UC = if_else(
-      total > (cow+calf+spike+bull+UC), as.numeric(total-(cow+calf+spike+bull)),
-      as.numeric(UC)),
+    total > (cow+calf+spike+bull+UC), as.numeric(total-(cow+calf+spike+bull)),
+    as.numeric(UC)),
     total = as.numeric(cow+calf+spike+bull+UC))
 
 ## 1.6 EFFORT ####
@@ -94,6 +95,36 @@ obs <- inner_join(obs, eff %>% select(year, EPU, ID), by=c(c("subunit"="EPU"),"y
   mutate(
     stratum = ID,
     .keep="unused")
+
+#including telemetry obs helps some EPUs but hurts others -> depends on effect on average group size
+
+group <- obs %>%
+  group_by(subunit) %>%
+  summarize(avg_group = mean(total))
+
+# if keeping telems brings avg groupsize closer to EPU's total average, then keep them
+telem.stats <- obs %>%
+  ungroup() %>%
+  group_by(year, subunit, survey.type) %>%
+  summarize(n = n(),
+            count = sum(total)) %>%
+  ungroup() %>%
+  pivot_wider(names_from = survey.type, 
+              values_from = c(n, count)) %>%
+  mutate(n_telem = replace_na(n_Telemetry, 0),
+         n_nontelem = replace_na(n_Inventory, 0)+replace_na(n_Capture,0),
+         count_telem = replace_na(count_Telemetry, 0),
+         count_nontelem = replace_na(count_Inventory, 0) + replace_na(count_Capture, 0),
+         .keep="unused") %>%
+  filter(count_telem>0) %>%
+  mutate(avg_group_nontelem = (count_nontelem/n_nontelem),
+         avg_group_telem = (count_telem+count_nontelem)/(n_telem+n_nontelem)) %>%
+  left_join(group, by="subunit") %>%
+  mutate(keep_telem= if_else(abs(avg_group_telem-avg_group)>=abs(avg_group_nontelem-avg_group), F, T))
+
+# add telem direction to obs
+obs <- left_join(obs, telem.stats %>% select(year, subunit, keep_telem), by=c("year", "subunit")) %>%
+  filter(!(survey.type=="Telemetry"& keep_telem==F))
 
 # 2 Prepare data ####
 
@@ -172,87 +203,110 @@ oper.dat <- left_join(obs, year.ID, by="year")
 
 # get non-augmented data organized
 oper.dat <- oper.dat %>%
-  transmute(x = voc,
-            ym1 = total-1,
-            h = as.double(stratum),
+  # model won't accept voc = 0 or 1, fix below
+  mutate(voc = if_else(voc==1, 0.99,
+                       if_else(voc==0, 0.01, voc)))
+
+# try adding avg voc where its missing
+voc.stats <- oper.dat %>%
+  group_by(subunit) %>%
+  summarize(avg = as.double(mean(voc, na.rm=T)),
+            med = median(voc, na.rm=T))
+
+oper.dat <- left_join(oper.dat, voc.stats, by="subunit") %>%
+  mutate(voc = if_else(is.na(voc), avg, voc)) %>%
+  mutate(voc = if_else(voc=="NaN", NA, voc))
+
+# create an oper.dat summary dataframe to make sure we don't lose any stratums in the following filtering
+blank_rows <- oper.dat %>%
+  group_by(year.ID, stratum) %>%
+  summarize(x = NA,
+            ym1 = 0,
             q = 1,
-            z = 1,
-            yr = year.ID,
-            subunits = as.double(stratum),
-            survey.type = NULL) %>%
-  # model won't accept x = 0 or 1, fix below
-  mutate(x = if_else(x==1, 0.99,
-                     if_else(x==0, 0.01, x))) %>%
-  glimpse()
+            z = 0) %>%
+  rename(yr = year.ID, h = stratum) %>%
+  mutate(subunits = h) %>%
+  select(x, ym1, h, q, z, yr, subunits)
+
+# create cow, calf, and bull dataframes
+oper.dat.cow <- oper.dat %>%
+  filter(cow>0) %>%
+  mutate(total = cow) %>%
+  oper.datify() %>%
+  rbind(blank_rows)
+
+oper.dat.calf <- oper.dat %>%
+  filter(calf>0) %>%
+  mutate(total = calf) %>%
+  oper.datify() %>%
+  rbind(blank_rows)
+
+oper.dat.bull <- oper.dat %>%
+  filter(bull>0) %>%
+  mutate(total = bull) %>%
+  oper.datify() %>%
+  rbind(blank_rows)
+
+oper.dat <- oper.dat %>%
+  oper.datify()
 
 ### 2.2.2 Augmented data ####
-# need to determine max m of each h
-aug <- oper.dat %>%
-  group_by(yr, h) %>%
-  summarize(m = n()) %>%
-  ungroup() %>%
-  group_by(h) %>%
-  reframe(yr = yr,
-          m = m,
-          m.max = max(m)) %>%
-  ungroup() %>%
-  mutate(b = 2*m.max,
-         aug = b-m)
 
-oper.dat.aug <- aug[rep(1:nrow(aug), aug$aug),] %>%
-  mutate(x = NA, ym1 = NA, h = h, q = NA, z = 0, yr = yr, subunits = h, .keep="none") %>%
-  ungroup()
+oper.dat <- oper.dat %>%
+  augment()
 
-### 2.2.3 Combine ####
+oper.dat.cow <- oper.dat.cow %>%
+  augment()
 
-oper.dat <- rbind(oper.dat, oper.dat.aug) %>%
-  arrange(yr, h, q)
+oper.dat.calf <- oper.dat.calf %>%
+  augment()
 
-glimpse(oper.dat) # check
+oper.dat.bull <- oper.dat.bull %>%
+  augment()
 
 ## 2.3 PLOT DAT ####
 
 plot.dat <- oper.dat %>%
-  select(yr, h) %>%
-  distinct() %>%
-  mutate(h.plots = h, 
-         yr.plots = yr) %>%
-  select(h.plots, yr.plots) %>%
-  arrange(yr.plots, h.plots)
-glimpse(plot.dat)
+  plot.datify()
+
+plot.dat.cow <- oper.dat.cow %>%
+  plot.datify()
+
+plot.dat.calf <- oper.dat.calf %>%
+  plot.datify()
+
+plot.dat.bull <- oper.dat.bull %>%
+  plot.datify()
 
 ## 2.4 SCALAR DAT ####
+scalar.dat <- scalar.datify(oper.dat, plot.dat)
 
-scalar.dat <- as.data.frame(matrix(NA, 1, 3))
-colnames(scalar.dat) <- c("R", "Ngroups", "Nsubunits.yr")
+scalar.dat.cow <- scalar.datify(oper.dat.cow, plot.dat.cow)
 
-scalar.dat <- as.data.frame(matrix(NA, 1, (nrow(plot.dat))))
-i <- 1
-for(i in 1:nrow(plot.dat)){
-  scalar.dat[,i] <- as.double(nrow(oper.dat %>% filter(yr == plot.dat$yr.plots[i], h == plot.dat$h.plots[i])))
-  colnames(scalar.dat)[i] <- paste("h", plot.dat$h.plots[i], "y", plot.dat$yr.plots[i], sep = "")
-}
+scalar.dat.calf <- scalar.datify(oper.dat.calf, plot.dat.calf)
 
-scalar.dat <- scalar.dat %>%
-  mutate(R = as.double(nrow(sight.dat)),
-         Ngroups = as.double(nrow(oper.dat)),
-         Nsubunits.yr = as.double(nrow(plot.dat)))
+scalar.dat.bull <- scalar.datify(oper.dat.bull, plot.dat.bull)
 
 # Create scalar.sums to ease modelling
 # tells us how many rows belong to each year/stratum combo
-scalar.sums <- matrix(NA, nrow(plot.dat), 2)
-for (i in 1:nrow(plot.dat)){
-  t <- i-1
-  scalar.sums[i, 1] <- sum(scalar.dat[,0:t], 1)
-  scalar.sums[i, 2] <- sum(scalar.dat[,0:i])
-}
+scalar.sums <- scalar.sumsify(plot.dat, scalar.dat)
+
+scalar.sums.cow <- scalar.sumsify(plot.dat.cow, scalar.dat.cow)
+
+scalar.sums.calf <- scalar.sumsify(plot.dat.calf, scalar.dat.calf)
+
+scalar.sums.bull <- scalar.sumsify(plot.dat.bull, scalar.dat.bull)
 
 ## 2.5 SAVE INPUTS ####
+
+setwd(input_wd)
+
 # JAGS inputs
-jags_input <- c("sight.dat", "oper.dat", "plot.dat", "scalar.dat", "eff", "scalar.sums")
+jags_input_names <- c("sight.dat", "oper.dat", "plot.dat", "scalar.dat", "eff", "scalar.sums")
+jags_input <- ls(pattern = paste0("^", paste(jags_input_names, collapse = "|")))
 save(list = jags_input, file = paste0("jags_input_", format(Sys.time(), "%Y%b%d_%H%M"), ".rdata"))
 # other inputs
-other_inputs <- c("compile_sheets", "name_fixer", "input_wd","output_wd","file","EPU.list","year.ID", "eff")
+other_inputs <- c("compile_sheets", "name_fixer", "rjags_to_table", "input_wd","output_wd","file","EPU.list","year.ID", "eff")
 save(list= other_inputs, file=paste0("other_inputs_", format(Sys.time(), "%Y%b%d_%H%M"), ".rdata"))
 
 files_to_keep <- c(jags_input, other_inputs, "other_inputs")
@@ -260,6 +314,8 @@ files_to_keep <- c(jags_input, other_inputs, "other_inputs")
 rm(list = setdiff(ls(), files_to_keep))
 
 # 3 Bayesian Analysis ####
+
+setwd(wd)
 
 ## 3.1 SET PARAMETERS ####
 
@@ -275,21 +331,49 @@ nt <- 2     # 50% thinning rate (discard every 2nd iteration)
 nb <- 20000
 nc <- 3
 
-# Bundle data
+## 3.2 RUN THE MODEL ####
+# All data
 bundle.dat <- list(x.tilde=sight.dat$x.tilde, z.tilde=sight.dat$z.tilde, #sight.dat
                    x=oper.dat$x, ym1=oper.dat$ym1, h=oper.dat$h, q=oper.dat$q, z=oper.dat$z, yr=oper.dat$yr, subunits=oper.dat$subunits, # oper.dat
                    h.plots=plot.dat$h.plots, yr.plots=plot.dat$yr.plots, # plot_dat
                    R=scalar.dat$R, Ngroups=scalar.dat$Ngroups, Nsubunits.yr=scalar.dat$Nsubunits.yr, scalars=scalar.sums, #scalar.dat
                    years=length(unique(plot.dat$yr.plots)), stratums=length(unique(plot.dat$h.plots)))
 
-## 3.2 RUN THE MODEL ####
-jags_output <- jags(bundle.dat, inits, params, "beta_binom_model_elk2022.txt", nc, ni, nb, nt)
+jags_output <- jags(bundle.dat, inits, params, "www/beta_binom_model_elk2022.txt", nc, ni, nb, nt)
 
-setwd(output_wd)
+# Cows
+bundle.dat.cow <- list(x.tilde=sight.dat$x.tilde, z.tilde=sight.dat$z.tilde, #sight.dat
+                       x=oper.dat.cow$x, ym1=oper.dat.cow$ym1, h=oper.dat.cow$h, q=oper.dat.cow$q, z=oper.dat.cow$z, yr=oper.dat.cow$yr, subunits=oper.dat.cow$subunits, # oper.dat.cow
+                       h.plots=plot.dat.cow$h.plots, yr.plots=plot.dat.cow$yr.plots, # plot.dat.cow
+                       R=scalar.dat.cow$R, Ngroups=scalar.dat.cow$Ngroups, Nsubunits.yr=scalar.dat.cow$Nsubunits.yr, scalars=scalar.sums.cow, #scalar.dat.cow
+                       years=length(unique(plot.dat.cow$yr.plots)), stratums=length(unique(plot.dat.cow$h.plots)))
+
+jags_output_cow <- jags(bundle.dat.cow, inits, params, "www/beta_binom_model_elk2022.txt", nc, ni, nb, nt)
+
+# Calves
+bundle.dat.calf <- list(x.tilde=sight.dat$x.tilde, z.tilde=sight.dat$z.tilde, #sight.dat
+                        x=oper.dat.calf$x, ym1=oper.dat.calf$ym1, h=oper.dat.calf$h, q=oper.dat.calf$q, z=oper.dat.calf$z, yr=oper.dat.calf$yr, subunits=oper.dat.calf$subunits, # oper.dat.calf
+                        h.plots=plot.dat.calf$h.plots, yr.plots=plot.dat.calf$yr.plots, # plot.dat.calf
+                        R=scalar.dat.calf$R, Ngroups=scalar.dat.calf$Ngroups, Nsubunits.yr=scalar.dat.calf$Nsubunits.yr, scalars=scalar.sums.calf, #scalar.dat.calf
+                        years=length(unique(plot.dat.calf$yr.plots)), stratums=length(unique(plot.dat.calf$h.plots)))
+
+jags_output_calf <- jags(bundle.dat.calf, inits, params, "www/beta_binom_model_elk2022.txt", nc, ni, nb, nt)
+
+# Bulls
+bundle.dat.bull <- list(x.tilde=sight.dat$x.tilde, z.tilde=sight.dat$z.tilde, #sight.dat
+                        x=oper.dat.bull$x, ym1=oper.dat.bull$ym1, h=oper.dat.bull$h, q=oper.dat.bull$q, z=oper.dat.bull$z, yr=oper.dat.bull$yr, subunits=oper.dat.bull$subunits, # oper.dat.bull
+                        h.plots=plot.dat.bull$h.plots, yr.plots=plot.dat.bull$yr.plots, # plot.dat.bull
+                        R=scalar.dat.bull$R, Ngroups=scalar.dat.bull$Ngroups, Nsubunits.yr=scalar.dat.bull$Nsubunits.yr, scalars=scalar.sums.bull, #scalar.dat.bull
+                        years=length(unique(plot.dat.bull$yr.plots)), stratums=length(unique(plot.dat.bull$h.plots)))
+
+jags_output_bull <- jags(bundle.dat.bull, inits, params, "www/beta_binom_model_elk2022.txt", nc, ni, nb, nt)
 
 ## 3.4 SAVE OUTPUTS ####
 
-jags_outputs <- c("jags_output", "scalar.dat")
+setwd(output_wd)
+
+jags_output_names <- c("jags_output", "scalar.dat")
+jags_outputs <- ls(pattern = paste0("^", paste(jags_output_names, collapse = "|")))
 save(list = jags_outputs, file=paste0("jags_output_", format(Sys.time(), "%Y%b%d_%H%M"), ".rdata"))
 
 files_to_keep <- c(jags_outputs, other_inputs)
@@ -309,26 +393,13 @@ standard$EPU <- name_fixer(standard$EPU)
 
 ### 4.3.1 Bayesian ####
 
-jags.summary <- as.data.frame(jags_output$BUGSoutput$summary)
+jags_table <- rjags_to_table(jags_output)
 
-tau.jags <- matrix(NA,(nrow(jags.summary)-3),9)
-tau.jags <- as.data.frame(tau.jags)
-tau.jags[,1] <- as.numeric(str_extract(colnames(scalar.dat)[1:length(jags_output$BUGSoutput$median$tau.hat)], "(?<=h)[:digit:]{1,2}"))
-tau.jags[,2] <- as.numeric(str_extract(colnames(scalar.dat)[1:length(jags_output$BUGSoutput$median$tau.hat)], "(?<=y)[:digit:]{1,2}"))
-tau.jags[,3] <- round(jags.summary$`50%`[4:nrow(jags.summary)])
-tau.jags[,4] <- round(jags.summary$`2.5%`[4:nrow(jags.summary)])
-tau.jags[,5] <- round(jags.summary$`97.5%`[4:nrow(jags.summary)])
-tau.jags[,6] <- round(jags.summary$`25%`[4:nrow(jags.summary)])
-tau.jags[,7] <- round(jags.summary$`75%`[4:nrow(jags.summary)])
-tau.jags[,8] <- round(jags.summary$Rhat[4:nrow(jags.summary)], 3)
-tau.jags[,9] <- round(jags.summary$sd[4:nrow(jags.summary)]/jags.summary$`50%`[4:nrow(jags.summary)], 3)
+jags_table_cow <- rjags_to_table(jags_output_cow)
 
-rm(jags_output)
+jags_table_calf <- rjags_to_table(jags_output_calf)
 
-colnames(tau.jags) <- c("ID", "year.ID", "Model","JAGS_lcl_95", "JAGS_ucl_95", "JAGS_lcl_50", "JAGS_ucl_50", "Rhat", "cv") 
-jags_output <- left_join(tau.jags, year.ID, by="year.ID") %>%
-  left_join(EPU.list, by="ID") %>%
-  select(-year.ID, -ID)
+jags_table_bull <- rjags_to_table(jags_output_bull)
 
 ### 4.3.2 Standard ####
 
@@ -345,9 +416,18 @@ standard <- standard %>%
 ### 4.3.3 Combine tables ####
 
 # create a dataframe that combines the important elements of all dataframes
-results.all <- left_join(jags_output %>% select(year, EPU, Model, JAGS_lcl_95, JAGS_ucl_95, JAGS_lcl_50, JAGS_ucl_50),
+results.all <- left_join(jags_table %>% select(year, EPU, Model, JAGS_lcl_95, JAGS_ucl_95, JAGS_lcl_50, JAGS_ucl_50),
                          standard, 
-                         by=c("EPU", "year"))
+                         by=c("EPU", "year")) %>%
+  left_join(jags_table_cow %>% select(Cow=Model, EPU, year), by=c("EPU", "year")) %>%
+  left_join(jags_table_calf %>% select(Calf=Model, EPU, year), by=c("EPU", "year")) %>%
+  left_join(jags_table_bull %>% select(Bull=Model, EPU, year), by=c("EPU", "year"))
+
+# calculate calf:100 cows and bull:100 cows ratios
+results.all <- results.all %>%
+  mutate("calf_cow" = Calf*100/Cow,
+         "bull_cow" = Bull*100/Cow) %>%
+  select(-Cow, -Calf, -Bull)
 
 # uncomment any commented sections below if you're including mHT estimates
 results.long <- pivot_longer(results.all,
@@ -357,7 +437,7 @@ results.long <- pivot_longer(results.all,
                              values_to = "estimate") %>%
   mutate(lcl_50 =
            if_else(method == "Model", JAGS_lcl_50, as.double(NA))) %>%
-
+  
   mutate(ucl_50 =
            if_else(method == "Model", JAGS_ucl_50, as.double(NA))) %>%
   mutate(lcl_95 =
