@@ -1,0 +1,14 @@
+name: ElkAbundanceEstimator
+title: ElkAbundanceEstimator
+username:
+account: 3ahyqy-tristen-brush
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 9441907
+bundleId: 7453681
+url: https://3ahyqy-tristen-brush.shinyapps.io/ElkAbundanceEstimator/
+when: 1689271864.19668
+lastSyncTime: 1689271864.19669
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: Copy_Bayesian_condensed.R|input|output
