@@ -49,3 +49,99 @@ compile_sheets <- function(filepath,type){
   }
   return(output)
 }
+
+oper.datify <- function(df){
+  transmute(.data = df,
+            x = voc,
+            ym1 = total-1,
+            h = as.double(stratum),
+            q = 1,
+            z = 1,
+            yr = year.ID,
+            subunits = as.double(stratum),
+            survey.type = NULL)
+}
+
+augment <- function(df){
+  aug <- df %>%
+    # need to determine max annual m of each h
+  group_by(yr, h) %>%
+    summarize(m = n()) %>%
+    ungroup() %>%
+    group_by(h) %>%
+    reframe(yr = yr,
+            m = m,
+            m.max = max(m)) %>%
+    ungroup() %>%
+    mutate(b = 2*m.max,
+           aug = b-m)
+  # create augmented dataframe
+  oper.dat.aug <- aug[rep(1:nrow(aug), aug$aug),] %>%
+    mutate(x = NA, ym1 = NA, h = h, q = NA, z = 0, yr = yr, subunits = h, .keep="none") %>%
+    ungroup()
+  # combine dataframes
+  output <- rbind(df, oper.dat.aug) %>%
+    arrange(yr, h, q)
+  return(output)
+}
+
+plot.datify <- function(df){
+  df %>%
+    select(yr, h) %>%
+    distinct() %>%
+    mutate(h.plots = h, 
+           yr.plots = yr) %>%
+    select(h.plots, yr.plots) %>%
+    arrange(yr.plots, h.plots)
+}
+
+scalar.datify <- function(operdat, plotdat){
+  output <- as.data.frame(matrix(NA, 1, (nrow(plotdat))))
+  i <- 1
+  for(i in 1:nrow(plotdat)){
+    output[,i] <- as.double(nrow(operdat %>% filter(yr == plotdat$yr.plots[i], h == plotdat$h.plots[i])))
+    colnames(output)[i] <- paste("h", plotdat$h.plots[i], "y", plotdat$yr.plots[i], sep = "")
+  }
+  
+  output <- output %>%
+    mutate(R = as.double(nrow(sight.dat)),
+           Ngroups = as.double(nrow(operdat)),
+           Nsubunits.yr = as.double(nrow(plotdat)))
+  return(output)
+}
+scalar.sumsify <- function(plotdat, scalardat){
+  # Create scalar.sums to ease modelling
+  # tells us how many rows belong to each year/stratum combo
+  output <- matrix(NA, nrow(plotdat), 2)
+  for (i in 1:nrow(plotdat)){
+    t <- i-1
+    output[i, 1] <- sum(scalardat[,0:t], 1)
+    output[i, 2] <- sum(scalardat[,0:i])
+  }
+  return(output)
+}
+
+rjags_to_table <- function(jagsoutput){
+  jags.summary <- as.data.frame(jagsoutput$BUGSoutput$summary)
+  
+  tau.jags <- matrix(NA,(nrow(jags.summary)-3),9)
+  tau.jags <- as.data.frame(tau.jags)
+  tau.jags[,1] <- as.numeric(str_extract(colnames(scalar.dat)[1:length(jagsoutput$BUGSoutput$median$tau.hat)], "(?<=h)[:digit:]{1,2}"))
+  tau.jags[,2] <- as.numeric(str_extract(colnames(scalar.dat)[1:length(jagsoutput$BUGSoutput$median$tau.hat)], "(?<=y)[:digit:]{1,2}"))
+  tau.jags[,3] <- round(jags.summary$`50%`[4:nrow(jags.summary)])
+  tau.jags[,4] <- round(jags.summary$`2.5%`[4:nrow(jags.summary)])
+  tau.jags[,5] <- round(jags.summary$`97.5%`[4:nrow(jags.summary)])
+  tau.jags[,6] <- round(jags.summary$`25%`[4:nrow(jags.summary)])
+  tau.jags[,7] <- round(jags.summary$`75%`[4:nrow(jags.summary)])
+  tau.jags[,8] <- round(jags.summary$Rhat[4:nrow(jags.summary)], 3)
+  tau.jags[,9] <- round(jags.summary$sd[4:nrow(jags.summary)]/jags.summary$`50%`[4:nrow(jags.summary)], 3)
+  
+  rm(jagsoutput)
+  
+  colnames(tau.jags) <- c("ID", "year.ID", "Model","JAGS_lcl_95", "JAGS_ucl_95", "JAGS_lcl_50", "JAGS_ucl_50", "Rhat", "cv") 
+  output <- left_join(tau.jags, year.ID, by="year.ID") %>%
+    left_join(EPU.list, by="ID") %>%
+    select(-year.ID, -ID)
+  
+  return(output)
+}
