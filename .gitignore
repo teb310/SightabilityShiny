@@ -14,3 +14,6 @@ www/elk_galore.JPG
 *.csv
 Copy_Bayesian_condensed.R
 Copy_Bayesian_condensed.R
+*.png
+*.dcf
+rsconnect/shinyapps.io/3ahyqy-tristen-brush/ElkAbundanceEstimator.dcf
