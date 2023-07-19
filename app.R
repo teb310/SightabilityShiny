@@ -7,7 +7,9 @@ library("DT")
 library("dplyr")
 library("ggplot2")
 library("tidyr")
+library("stringr")
 library("lubridate")
+library("readr")
 library("chron")
 library("rgdal")
 library("readxl")
@@ -103,7 +105,8 @@ server <- function(input, output, session) {
       # Show progress bar while running the model
       withProgress(message = "Running the model...", detail = "This can take an hour or more.", {
         source(
-          "Bayesian_condensed.R",
+          "model_stratified.R",
+          echo = T,
           local = TRUE,
           keep.source = FALSE,
           encoding = "UTF-8"
@@ -217,6 +220,27 @@ server <- function(input, output, session) {
         table_data %>% filter(!is.na(lcl_50)) %>% select(year, EPU, lcl_50, ucl_50, lcl_95, ucl_95),
         by = c("year", "EPU")
       ) %>%
+      select(
+        year,
+        EPU,
+        target,
+        min_count,
+        Standard,
+        Model,
+        lcl_50,
+        ucl_50,
+        lcl_95,
+        ucl_95,
+        calf_cow,
+        bull_cow
+      )
+    arrange(table, desc(year), EPU)
+  })
+  
+  display_table <- reactive({
+    req(results_table())
+    table <- results_table()
+    table <- table %>%
       mutate(
         `50% Confidence Interval` = paste0(lcl_50, " to ", ucl_50),
         `95% Confidence Interval` = paste0(lcl_95, " to ", ucl_95),
@@ -240,7 +264,7 @@ server <- function(input, output, session) {
         `Calves per 100 Cows`,
         `Bulls per 100 Cows`
       )
-    arrange(table, desc(Year), EPU)
+    table
   })
   
   ## Construct plot ----
@@ -363,7 +387,7 @@ server <- function(input, output, session) {
               linetype = "Target",
               color = "Target"
             ),
-            linetype = 3,
+            linetype = 2,
             color = 'red',
             linewidth = 1
           )
@@ -523,7 +547,7 @@ server <- function(input, output, session) {
       if (input$EPU == "All") {
         "AllEPUs"
       } else {
-        input$EPU
+        str_remove_all(input$EPU, "[ -]")
       },
       if (input$method == "All") {
         "AllMethods"
@@ -602,14 +626,17 @@ server <- function(input, output, session) {
   ### Table tab ----
   # Display table
   output$table <- renderDataTable({
-    results_table()
+    display_table()
   })
   # Render UI
   output$tableUI <- renderUI({
     if (!is.null(results_path())) {
       dataTableOutput("table", width = "100%", height = "100%")
     } else {
-      textOutput("no_file")
+      tagList(
+        br(),
+        textOutput("no_file")
+      )
     }
   })
   
@@ -634,7 +661,10 @@ server <- function(input, output, session) {
       req(plot_height())
       plotOutput("plot", width = "100%", height = plot_height())
     } else {
-      textOutput("no_file")
+      tagList(
+        br(),
+        textOutput("no_file")
+      )
     }
   })
 }
