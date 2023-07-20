@@ -393,7 +393,7 @@ standard$EPU <- name_fixer(standard$EPU)
 
 ### 4.3.1 Bayesian ####
 
-jags_table <- rjags_to_table(jags_output, scalar.dat, EPU.list)
+jags_table <- rjags_to_table(jags_output)
 
 jags_table_cow <- rjags_to_table(jags_output_cow)
 
