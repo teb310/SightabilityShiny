@@ -137,7 +137,7 @@ rjags_to_table <- function(jagsoutput, scalardat, year_list, EPU_list, stratum_l
   tau.jags[,7] <- round(jags.summary$`25%`[4:nrow(jags.summary)])
   tau.jags[,8] <- round(jags.summary$`75%`[4:nrow(jags.summary)])
   tau.jags[,9] <- round(jags.summary$Rhat[4:nrow(jags.summary)], 3)
-  tau.jags[,10] <- round(jags.summary$sd[4:nrow(jags.summary)]/jags.summary$`50%`[4:nrow(jags.summary)], 3)
+  tau.jags[,10] <- round(jags.summary$sd[4:nrow(jags.summary)]/jags.summary$mean[4:nrow(jags.summary)], 3)
   
   colnames(tau.jags) <- c("subunit.ID", "stratum.ID", "year.ID", "Model","lcl_95", "ucl_95", "lcl_50", "ucl_50", "Rhat", "cv") 
   output <- left_join(tau.jags, year_list, by="year.ID") %>%
