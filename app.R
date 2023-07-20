@@ -24,7 +24,7 @@ library("statip")
 library("R2jags")
 
 # run functions
-source("helpers.R")
+source("helpers_stratified.R")
 
 # Set your working directory paths and survey data file path
 wd <- getwd()
