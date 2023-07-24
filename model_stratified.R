@@ -130,14 +130,14 @@ obs <- inner_join(obs, eff %>% select(year, EPU, ID), by=c(c("subunit"="EPU"),"y
 
 group <- obs %>%
   group_by(subunit) %>%
-  summarize(avg_group = mean(total))
+  summarize(avg_group = mean(y))
 
 # if keeping telems brings avg groupsize closer to EPU's total average, then keep them
 telem.stats <- obs %>%
   ungroup() %>%
   group_by(year, subunit, survey.type) %>%
   summarize(n = n(),
-            count = sum(total)) %>%
+            count = sum(y)) %>%
   ungroup() %>%
   pivot_wider(names_from = survey.type, 
               values_from = c(n, count)) %>%
