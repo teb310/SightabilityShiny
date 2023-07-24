@@ -1,7 +1,7 @@
-# Elk Sightability Analysis
-
+# # Elk Sightability Analysis
+# 
 runModel <- function(file_path) {
-
+# 
 # # 1 Load and clean ####
 # 
 # ## 1.1 LOAD DATA ####
@@ -10,7 +10,7 @@ runModel <- function(file_path) {
 # new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 # if(length(new.packages)) install.packages(new.packages)
 # lapply(list.of.packages, require, character.only = TRUE)
-# source("helpers.R")
+# source("helpers_stratified.R")
 # 
 # # Set your working directory paths and survey data file path
 # wd <- getwd()
@@ -22,8 +22,9 @@ runModel <- function(file_path) {
 # dir.create(output_wd)
 
 file <- paste0(file_path())
-
 setwd(input_wd)
+
+# file <- "2023_data.xlsx"
 
 # Extract observations from all years
 # If you didn't name your survey data sheets with "Data", replace below
@@ -105,6 +106,20 @@ EPU.list <- data.frame(EPU = unique(obs$subunit)) %>%
 eff <- inner_join(eff, EPU.list, by="EPU")
 
 # Add ID to obs
+
+# convert sex/age to stratum
+obs <- obs %>%
+  pivot_longer(cow:total, names_to = "stratum", values_to = "y") %>%
+  filter(y>0,
+         stratum != "UC")
+
+stratum.ID <- obs %>%
+  select(stratum) %>%
+  distinct()
+stratum.ID$h <- seq(1:nrow(stratum.ID))
+
+obs <- obs %>%
+  left_join(stratum.ID, by="stratum")
 
 obs <- inner_join(obs, eff %>% select(year, EPU, ID), by=c(c("subunit"="EPU"),"year")) %>%
   mutate(
@@ -216,19 +231,7 @@ year.ID[,2] <- seq(1,length(unique(obs$year)))
 # join to oper.dat
 oper.dat <- left_join(obs, year.ID, by="year")
 
-# convert sex/age to stratum
-oper.dat <- oper.dat %>%
-  pivot_longer(cow:total, names_to = "stratum", values_to = "y") %>%
-  filter(y>0,
-         stratum != "total")
 
-stratum.ID <- oper.dat %>%
-  select(stratum) %>%
-  distinct()
-stratum.ID$h <- seq(1:nrow(stratum.ID))
-
-oper.dat <- oper.dat %>%
-  left_join(stratum.ID, by="stratum")
 
 
 # get non-augmented data organized
@@ -344,10 +347,10 @@ inits <-  function() list(bo=runif(1), bvoc=runif(1))
 params <- c("bo", "bvoc", "tau.hat")
 
 # MCMC settings
-ni <- 5000 
-nt <- 1     # no thinning
-nb <- 2500
-nc <- 4     # 4 chains
+ni <- 20000 
+nt <- 1     
+nb <- 10000
+nc <- 3     # 4 chains
 
 ## 3.2 RUN THE MODEL ####
 setwd(paste0(wd, "/www"))
@@ -422,18 +425,21 @@ jags_table <- rjags_to_table(jags_output, scalar.dat, year.ID, EPU.list, stratum
 # jags_table_bull <- rjags_to_table(jags_output_bull)
 
 total <- jags_table %>%
-  group_by(year, EPU) %>%
-  summarize(total = sum(Model),
-            lcl_95 = sum(lcl_95),
-            ucl_95 = sum(ucl_95),
-            lcl_50 = sum(lcl_50),
-            ucl_50 = sum(ucl_50),
-            Rhat = mean(Rhat),
-            cv = mean(cv))
+  filter(stratum=="total") %>%
+  select(-stratum)
+#   group_by(year, EPU) %>%
+#   summarize(total = sum(Model),
+#             lcl_95 = sum(lcl_95),
+#             ucl_95 = sum(ucl_95),
+#             lcl_50 = sum(lcl_50),
+#             ucl_50 = sum(ucl_50),
+#             Rhat = mean(Rhat),
+#             cv = mean(cv))
 
 model_results <- jags_table %>%
   select(year:Model) %>%
   pivot_wider(names_from = stratum, values_from = Model) %>%
+  select(-total) %>%
   left_join(total, by=c("year", "EPU"))
 
 ### 4.3.2 Standard ####
@@ -462,7 +468,7 @@ results.all <- left_join(model_results,
 results.all <- results.all %>%
   mutate("calf_cow" = calf*100/cow,
          "bull_cow" = bull*100/cow) %>%
-  select(-cow, -calf, -bull, -spike, Model=total)
+  select(-cow, -calf, -bull, -spike)
 
 # uncomment any commented sections below if you're including mHT estimates
 results.long <- pivot_longer(results.all,
@@ -485,19 +491,18 @@ results_filename <- paste0("Results_", format(Sys.time(), "%Y%b%d_%H%M"), ".csv"
 setwd(output_wd)
 write.csv(results.long, results_filename, row.names = F)
 
-resuts.long
 
-# results.all.stats <- results.all %>%
-#   mutate(diff = Model-Standard,
-#          within_50 = if_else(Standard>=lcl_50 & Standard <=ucl_50, T, F),
-#          within_95 = if_else(Standard>=lcl_95 & Standard <=ucl_95, T, F)) %>%
-#   mutate(percent = abs(diff)/((Standard+Model)/2)*100)
+results.all.stats <- results.all %>%
+  mutate(diff = Model-Standard,
+         within_50 = if_else(Standard>=lcl_50 & Standard <=ucl_50, T, F),
+         within_95 = if_else(Standard>=lcl_95 & Standard <=ucl_95, T, F)) %>%
+  mutate(percent = abs(diff)/((Standard+Model)/2)*100)
 
 # 
 # ## 4.5 EXTRAS ####
 # 
-# ### 4.5.1 Agreement ####
-# 
+### 4.5.1 Agreement ####
+
 # agree.BS = agree_test(x = results.all$Model,
 #                       y = results.all$Standard,
 #                       delta = 1)
