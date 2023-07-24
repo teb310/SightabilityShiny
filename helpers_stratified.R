@@ -68,7 +68,7 @@ augment <- function(df){
   group_by(yr, h, subunits) %>%
     summarize(m = n()) %>%
     ungroup() %>%
-    group_by(h) %>%
+    group_by(h, subunits) %>%
     reframe(yr = yr,
             subunits = subunits,
             m = m,
