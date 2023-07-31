@@ -49,21 +49,31 @@ ui <- fluidPage(
                  fileInput("data_file", "Upload Excel File", accept = ".xlsx"),
                  actionButton("run_script", "Run Script"),
                  br(),
-                 textOutput("script_status")
+                 textOutput("script_status"),
+                 # hidden button that tells R to download the results after running script
+                 downloadButton("download_results", "Download Results")
                ),
                mainPanel(
                  h3("Welcome"),
                  p(
                    "This app is designed to make statistical modelling of elk survey data quick and easy.
             First, upload your formatted Excel datasheet on the left. Once the model has run, you will
-            see a new file called 'Results_(date-time).csv' in the output folder of this app's directory. Load that
-            file into the Results tab to view and export your modelled elk abundance estimates."
+            see a download button. Click the button to export your results file. Load the
+            file in the Results tab to view your modelled elk abundance estimates."
                  ),
                  div(
                    id = "plot-container",
                    img(src = "elk_galore.JPG",
                        style = "width: 90%; height: 90%; display: block; margin-left: auto; margin-right: auto;")
-                 )
+                 ),
+                verbatimTextOutput("clock_output"),
+                tags$style(
+                  HTML("#clock_output {
+                       position: absolute;
+                       bottom: 10px;
+                       left: 10px;
+                       }")
+                )
                )
              )),
     tabPanel("Results",
@@ -87,12 +97,38 @@ ui <- fluidPage(
 
 # Define server logic ----
 server <- function(input, output, session) {
+  
   # Reactive value defaults
   file_path <- reactiveVal(NULL)
   results_path <- reactiveVal(NULL)
   script_finished <- reactiveVal(FALSE)
+  results_reactive <- reactiveValues(data = NULL)
+  timer <- reactiveTimer(1000)
   
   # Model tab ----
+  
+  # clock to prevent timing out
+  clock <- reactive({
+    invalidateLater(1000)
+    format(Sys.time(), "%H:%M:%S")
+  })
+  
+  output$clock_output <- renderText(clock())
+  
+  observe({
+    timer()
+    output$clock_output <- renderText({
+      clock()
+    })
+  })
+  
+  # Show the run model button only if a file is uploaded
+  observe({
+    shinyjs::hide("run_script")
+    if(!is.null(file_path())){
+      shinyjs::show("run_script")
+    }
+  })
   
   # Load data from the uploaded Excel file
   observeEvent(input$data_file, {
@@ -116,16 +152,37 @@ server <- function(input, output, session) {
     }
   })
   
+  observe({
+    if(script_finished()){
+      # Show the download button after the script has run
+      shinyjs::show("download_results")
+    } else {
+      shinyjs::hide("download_results")
+    }
+    })
+  
   # Display script status
   output$script_status <- renderText({
-    if (script_finished()) {
+    if (script_finished()==T) {
       "Script finished running!"
-      # } else if (input$run_script) {
+      # } else if (input$run_script()) {
       #   "Running...this can take an hour or more"
     } else {
       "Upload a file and run the script."
     }
   })
+  
+  # The downloadHandler function
+  output$download_results <- downloadHandler(
+    filename = function() {
+      # Set the filename for the downloaded file
+      paste0("Results_", format(Sys.time(), "%Y%b%d_%H%M"), ".csv")
+    },
+    content = function(file) {
+      # Prepare the data for download (use the data from reactiveValues)
+      write.csv(results_reactive$data, file, row.names = F)
+    }
+  )
   
   # Results tab ----
   ## Building blocks ----
