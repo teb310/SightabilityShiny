@@ -17,3 +17,10 @@ Copy_Bayesian_condensed.R
 *.png
 *.dcf
 rsconnect/shinyapps.io/3ahyqy-tristen-brush/ElkAbundanceEstimator.dcf
+output/BA_plot_3yr.jpg
+output/BA_plot_3yr.pdf
+output/BA_plot_8yr.jpg
+output/BA_plot_8yr.pdf
+output/BA_plot_8yr_2021_to_23.jpg
+output/BA_plot_8yr_2021_to_23.pdf
+rsconnect/shinyapps.io/3ahyqy-tristen-brush/ElkAbundanceEstimator.dcf
