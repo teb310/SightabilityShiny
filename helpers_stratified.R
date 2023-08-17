@@ -126,7 +126,7 @@ scalar.sumsify <- function(plotdat, scalardat){
 rjags_to_table <- function(jagsoutput, scalardat, year_list, EPU_list, stratum_list){
   jags.summary <- as.data.frame(jagsoutput$BUGSoutput$summary)
   
-  tau.jags <- matrix(NA,(nrow(jags.summary)-3),9)
+  tau.jags <- matrix(NA,(nrow(jags.summary)-3),11)
   tau.jags <- as.data.frame(tau.jags)
   tau.jags[,1] <- as.numeric(str_extract(colnames(scalardat)[1:length(jagsoutput$BUGSoutput$median$tau.hat)], "(?<=sub)[:digit:]{1,2}"))
   tau.jags[,2] <- as.numeric(str_extract(colnames(scalardat)[1:length(jagsoutput$BUGSoutput$median$tau.hat)], "(?<=h)[:digit:]{1,2}"))
@@ -138,13 +138,14 @@ rjags_to_table <- function(jagsoutput, scalardat, year_list, EPU_list, stratum_l
   tau.jags[,8] <- round(jags.summary$`75%`[4:nrow(jags.summary)])
   tau.jags[,9] <- round(jags.summary$Rhat[4:nrow(jags.summary)], 3)
   tau.jags[,10] <- round(jags.summary$sd[4:nrow(jags.summary)]/jags.summary$mean[4:nrow(jags.summary)], 3)
+  tau.jags[,11] <- as.numeric(jags.summary$n.eff[4:nrow(jags.summary)])
   
-  colnames(tau.jags) <- c("subunit.ID", "stratum.ID", "year.ID", "Model","lcl_95", "ucl_95", "lcl_50", "ucl_50", "Rhat", "cv") 
+  colnames(tau.jags) <- c("subunit.ID", "stratum.ID", "year.ID", "Model","lcl_95", "ucl_95", "lcl_50", "ucl_50", "Rhat", "cv", "n.eff") 
   output <- left_join(tau.jags, year_list, by="year.ID") %>%
     left_join(EPU_list, by=c("subunit.ID"="ID")) %>%
     left_join(stratum_list, by=c("stratum.ID"="h")) %>%
     select(-year.ID, -stratum.ID, -subunit.ID) %>%
-    select(year, EPU, stratum, Model:cv)
+    select(year, EPU, stratum, Model:n.eff)
   
   return(output)
 }
