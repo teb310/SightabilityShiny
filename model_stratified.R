@@ -383,9 +383,9 @@ results.long <- pivot_longer(results.all,
          calf_cow =
            if_else(method == "Model", calf_cow, as.double(NA)),
          bull_cow =
-           if_else(Method == "Model", bull_cow, as.double(NA)),
+           if_else(method == "Model", bull_cow, as.double(NA)),
          Rhat = 
-           if_else(Method == "Model", Rhat, as.double(NA)),
+           if_else(method == "Model", Rhat, as.double(NA)),
          cv = 
            if_else(method=="Model", cv, as.double(NA))) %>%
   select(year, 
@@ -403,6 +403,8 @@ results.long <- pivot_longer(results.all,
          cv, 
          Rhat)
 
+results.long
+
 ## 4.5 EXTRAS ####
 
 # results.all.stats <- results.all %>%
@@ -411,45 +413,6 @@ results.long <- pivot_longer(results.all,
 #          within_95 = if_else(Standard>=lcl_95 & Standard <=ucl_95, T, F)) %>%
 #   mutate(percent = abs(diff)/((Standard+Model)/2)*100)
 
-### 4.5.1 Agreement ####
-
-# agreement = agree_test(x = results.all$Model,
-#                       y = results.all$Standard,
-#                       delta = 1)
-# print(agreement) # 86%
-# agreement_plot = plot(agreement)
-# agreement_plot
-# 
-# ggsave("Method_agreement.jpeg", width = 10, height = 7, units="in")
-# 
-# # by year
-# agreement_by_year <- as.data.frame(matrix(NA, nrow(year.ID), 2))
-# 
-# i <- 1
-# for(i in 1:max(year.ID$year.ID)) {
-#   tmp <- results.all %>%
-#     filter(year == year.ID$year[i])
-#   agree.tmp <- agree_test(x = tmp$Model,
-#                           y = tmp$Standard,
-#                           delta = 1)
-#   agreement_by_year[i,] <- c(year.ID$year[i], agree.tmp[["ccc.xy"]][["est.ccc"]])
-# }
-# 
-# colnames(agreement_by_year) <- c("Year", "CCC")
-# 
-# write.csv(agreement_by_year, "Agreement_by_year.csv", row.names=F)
-
-# agreement_by_year = agree_test(x = results.all$Model,
-#                                y = results.all$Standard,
-#                                delta = 1)
-# # Agreement Table
-# Agreement <- as.data.frame(matrix(NA, 3, 2))
-# 
-# Agreement[1,] <- c("Bayesian vs. Standard", agree.BS$ccc.xy[1])
-# 
-# colnames(Agreement) <- c("Test", "CCC")
-# 
-# write.csv(Agreement,"Agreement.csv", row.names = FALSE)
 }
 
 output <- runModel(file_path)
