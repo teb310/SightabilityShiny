@@ -61,6 +61,7 @@ ui <- fluidPage(
             see a download button. Click the button to export your results file. Load the
             file in the Results tab to view your modelled elk abundance estimates."
                  ),
+                 verbatimTextOutput("model_progress"),
                  div(
                    id = "plot-container",
                    img(src = "elk_galore.JPG",
@@ -137,19 +138,24 @@ server <- function(input, output, session) {
   
   # Run the R script on the uploaded file
   observeEvent(input$run_script, {
-    if (!is.null(file_path())) {
       # Show progress bar while running the model
-      withProgress(message = "Running the model...", detail = "This can take an hour or more.", {
-        source(
+      # withProgress(message = "Running the model...", detail = "This can take an hour or more.", {
+    withCallingHandlers({
+      shinyjs::html("model_progress", "")
+      source(
           "model_stratified.R",
           echo = T,
           local = TRUE,
           keep.source = FALSE,
           encoding = "UTF-8"
         )
+    },
+    message = function(m){
+      shinyjs::html(id="model_progress", html = "", add=T)
+    })    
+        results_reactive$data <- output
         script_finished(TRUE)
-      })
-    }
+      # })
   })
   
   observe({
