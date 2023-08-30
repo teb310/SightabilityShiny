@@ -24,3 +24,5 @@ output/BA_plot_8yr.pdf
 output/BA_plot_8yr_2021_to_23.jpg
 output/BA_plot_8yr_2021_to_23.pdf
 rsconnect/shinyapps.io/3ahyqy-tristen-brush/ElkAbundanceEstimator.dcf
+*.jpg
+*.pdf
