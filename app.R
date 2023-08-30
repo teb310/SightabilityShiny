@@ -142,6 +142,7 @@ server <- function(input, output, session) {
       # withProgress(message = "Running the model...", detail = "This can take an hour or more.", {
     withCallingHandlers({
       shinyjs::html("model_progress", "")
+      withProgress(message = "Running the model...", detail = "This can take an hour or more.", {
       source(
           "model_stratified.R",
           echo = T,
@@ -149,6 +150,7 @@ server <- function(input, output, session) {
           keep.source = FALSE,
           encoding = "UTF-8"
         )
+    })
     },
     message = function(m){
       shinyjs::html(id="model_progress", html = "", add=T)
@@ -358,7 +360,7 @@ server <- function(input, output, session) {
            color = "Method",
            shape = "Target") +
       # name y axis
-      scale_y_continuous("Estimated Abundance") +
+      scale_y_continuous("Estimated Abundance", limits = c(0,NA)) +
       # use greyscale for point fill & color
       scale_fill_grey(start = 0, end = 0.7) +
       scale_color_grey(start = 0, end = 0.7) +
@@ -593,7 +595,7 @@ server <- function(input, output, session) {
   ### Export plot ----
   export_plot_height <- reactive({
     if (input$year == "All" & input$EPU == "All") {
-      2.457 * (ceiling(length(EPU_choices()) - 1) / 3)
+      2.75 * (ceiling(length(EPU_choices()) - 1) / 3)
     } else {
       9
     }
@@ -710,7 +712,7 @@ server <- function(input, output, session) {
     if (input$year == "All" & input$EPU == "All") {
       paste0(ceiling((length(
         EPU_choices()
-      ) - 1) / 3) * 22, "vh")
+      ) - 1) / 3) * 25, "vh")
     } else {
       "80vh"
     }
