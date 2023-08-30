@@ -2,8 +2,9 @@
 library(tidyverse)
 library(SimplyAgree)
 library(ggeffects)
+library(bayesplot)
 
-results <- Results_allyears
+results <- Results_2021_only
 
 results <- filter(results, year>2020)
 
@@ -28,7 +29,7 @@ agreement_plot
 
 year.ID <- as.data.frame(matrix(c(unique(results_wide$year), seq(1:length(unique(results_wide$year)))), ncol = 2))
 
-agreement_by_year <- as.data.frame(matrix(NA, nrow(year.ID), 4))
+agreement_by_year <- as.data.frame(matrix(NA, nrow(year.ID), 5))
 
 i <- 1
 for(i in 1:max(year.ID$V2)) {
@@ -40,10 +41,11 @@ for(i in 1:max(year.ID$V2)) {
   agreement_by_year[i,] <- c(year.ID$V1[i], 
                              agree.tmp[["ccc.xy"]][["est.ccc"]], 
                              agree.tmp[["ccc.xy"]][["lower.ci"]],
-                             agree.tmp[["ccc.xy"]][["upper.ci"]])
+                             agree.tmp[["ccc.xy"]][["upper.ci"]],
+                             agree.tmp[["loa"]][["estimate"]][[1]])
 }
 
-colnames(agreement_by_year) <- c("Year", "CCC", "LCL", "UCL")
+colnames(agreement_by_year) <- c("Year", "CCC", "LCL", "UCL", "bias")
 
 # write.csv(agreement_by_year, "Agreement_by_year.csv", row.names=F)
 
@@ -52,7 +54,12 @@ cv.summary <- results %>%
   group_by(year) %>%
   summarize(cv = median(cv, na.rm=T))
 
-print(median(results$cv, na.rm=T))
+print(median(results$cv[results$year==2021], na.rm=T))
+summary(results$cv)
+
+# model performance
+summary(results$Rhat)
+summary(results$n.eff)
 
 # Agreement Table
 Agreement <- as.data.frame(matrix(NA, 3, 2))
@@ -66,8 +73,12 @@ write.csv(Agreement,"Agreement.csv", row.names = FALSE)
 
 # Stable GR statistic
 library(stableGR)
+library(coda)
+library(stringr)
+library(tidyverse)
 mcmc_output <- as.mcmc(jags_output)
 target <- target.psrf(2, 3)
+print(target$psrf)
 GR <- stable.GR(mcmc_output)
 psrf <- GR$psrf
 psrf.table <- as.data.frame(matrix(c(as.numeric(str_extract(names(GR$means), "\\d+")), psrf), ncol = 2, nrow=length(psrf)))
@@ -82,4 +93,12 @@ psrf.summary <- psrf.table %>%
   mutate(converged = if_else(V2<=target$psrf, T, F))
 
 n.eff(mcmc_output)
+
+summary <- as.data.frame(as.array(summary(psrf.summary$V2)))
+
+# run autojags until the model converges
+
+recompile(jags_output)
+auto_output <- autojags(jags_output, Rhat=target$psrf)
+update(jags_output, n.iter = 5000)
 
