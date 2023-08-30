@@ -141,7 +141,7 @@ telem.stats <- obs %>%
   summarize(n = n(),
             count = sum(y)) %>%
   ungroup() %>%
-  pivot_wider(names_from = survey.type, 
+  pivot_wider(names_from = survey.type,
               values_from = c(n, count)) %>%
   mutate(n_telem = replace_na(n_Telemetry, 0),
          n_nontelem = replace_na(n_Inventory, 0),
@@ -401,7 +401,8 @@ results.long <- pivot_longer(results.all,
          calf_cow, 
          bull_cow, 
          cv, 
-         Rhat)
+         Rhat,
+         n.eff)
 
 results.long
 
