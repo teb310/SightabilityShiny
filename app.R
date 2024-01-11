@@ -209,13 +209,19 @@ server <- function(input, output, session) {
   year_choices <- reactive({
     req(results())  # Ensure a file is uploaded
     years <- unique(results()$year)
-    c("All", years)
+    years
+  })
+  
+  year_span <- reactive({
+    c(min(year_choices()), max(year_choices()))
   })
   
   ### selected_year ----
-  selected_year <- reactive({
-    req(results())  # Ensure a file is uploaded
-    max(results()$year)
+  selected_year <- reactiveVal()
+  
+  # update when it's changed in either tab
+  observeEvent(input$year, {
+    selected_year(c(input$year[1], input$year[2]))
   })
   
   ### EPU_choices ----
@@ -224,12 +230,47 @@ server <- function(input, output, session) {
     EPUs <- sort(unique(results()$EPU))
     c("All", EPUs)
   })
+  ### selected_EPU ----
+  selected_EPU <- reactiveVal()
+  # update when it's changed in either tab
+  observeEvent(input$EPU, {
+    selected_EPU(input$EPU)
+  })
+  
+  ### selected_method ----
+  selected_method <- reactiveVal()
+  # update when it's changed in either tab
+  observeEvent(input$method, {
+    selected_method(input$method)
+  })
+  
+  ### selected_CI ----
+  selected_CI <- reactiveVal(c("1","2"))
+  # update when it's changed in either tab
+  observeEvent(input$CI, {
+    selected_CI(input$CI)
+  })
+  
+  ### selected_target ----
+  selected_target <- reactiveVal(FALSE)
+  # update when it's changed in either tab
+  observeEvent(input$target, {
+    selected_target(input$target)
+  })
+  
+  ### selected_trend ----
+  selected_trend <- reactiveVal(FALSE)
+  # update when it's changed in either tab
+  observeEvent(input$trend, {
+    selected_trend(input$trend)
+  })
+  
   
   ### facet ----
   facet <- reactive({
     # faceting depends on year selection: if all, then facet by EPU, if one, facet by year (really just labelling top of graph with year)
     req(input$year)
-    if (input$year == "All") {
+    if (input$year[1] != input$year[2]) {
       "EPU"
     } else {
       "year"
@@ -239,16 +280,17 @@ server <- function(input, output, session) {
   ### x_var_data ----
   x_var_data <- reactive({
     req(input$year)
-    if (input$year == "All") {
-      "year"
-    } else {
+    if (input$year[1]==input$year[2]) {
       "EPU"
+    } else {
+      "year"
     }
   })
   
   ### ci_data ----
   ci_data <- reactive({
-    if (!is.null(input$CI) & 1 %in% input$CI & 2 %in% input$CI) {
+    req(input$CI)
+    if (1 %in% input$CI & 2 %in% input$CI) {
       list(
         ucl = c(results()$ucl_95, results()$ucl_50),
         lcl = c(results()$lcl_95, results()$lcl_50)
@@ -269,9 +311,7 @@ server <- function(input, output, session) {
   results_table <- reactive({
     req(results(), input$year, input$EPU)
     table_data <- results()
-    if (input$year != "All") {
-      table_data <- filter(table_data, table_data$year == input$year)
-    }
+    table_data <- filter(table_data, table_data$year %in% seq(input$year[1], input$year[2]))
     if (input$EPU != "All") {
       table_data <- filter(table_data, table_data$EPU == input$EPU)
     }
@@ -341,8 +381,8 @@ server <- function(input, output, session) {
     x_var <- x_var_data()
     plot_data <- results()
     plot_data$x <- plot_data[[x_var]]
-    if (input$year != "All") {
-      plot_data <- filter(plot_data, plot_data$year == input$year)
+    if (any(input$year != year_span())) {
+      plot_data <- filter(plot_data, plot_data$year %in% seq(input$year[1], input$year[2]))
     }
     if (input$EPU != "All") {
       plot_data <- filter(plot_data, plot_data$EPU == input$EPU)
@@ -481,7 +521,7 @@ server <- function(input, output, session) {
         legend.title = element_text(size = 14)
       )
     # Add points on top of everything
-    if (input$EPU == "All" & input$year == "All") {
+    if (input$EPU == "All" & input$year[1] != input$year[2]) {
       p <- p +
         geom_point(
           shape = 21,
@@ -502,26 +542,39 @@ server <- function(input, output, session) {
   ## Sidebar UI objects ----
   ### Year_select ----
   output$Year_select <- renderUI({
-    selectInput(
+    sliderInput(
       "year",
       label = strong("Year"),
-      choices = year_choices(),
-      selected = if (input$tables_plots == "Table") {
-        "All"
-      } else {
-        selected_year()
-      }
+      min = min(year_choices()),
+      max = max(year_choices()),
+      value = if(is.null(selected_year())) {
+        c(min(year_choices()), max(year_choices()))
+        } else {
+          selected_year()
+        },
+      step = 1
     )
   })
   
+  observe({
+    updateSliderInput(session, "year",
+                      min = min(year_choices()),
+                      max = max(year_choices()),
+                      value = selected_year())
+  })
+
   ### EPU_select ----
   output$EPU_select <- renderUI({
     selectInput(
       "EPU",
       label = strong("EPU"),
       choices = EPU_choices(),
-      selected = "All"
+      selected = selected_EPU()
     )
+  })
+  
+  observe({
+    updateSelectInput(session, "EPU", selected = selected_EPU())
   })
   
   ### Method_select ----
@@ -531,8 +584,12 @@ server <- function(input, output, session) {
       "method",
       label = strong("Method"),
       choices = list("All", "Model", "Standard"),
-      selected = "All"
+      selected = selected_method()
     )
+  })
+  
+  observe({
+    updateSelectInput(session, "method", selected = selected_method())
   })
   
   ### CI_check ----
@@ -542,23 +599,28 @@ server <- function(input, output, session) {
       "CI",
       strong("Confidence Intervals"),
       choices = list("95%" = 1, "50%" = 2),
-      selected = c(1, 2)
+      selected = selected_CI()
     )
   })
+  
+  observe({
+    updateSelectInput(session, "CI", selected = selected_CI())
+  })
+  
   
   ### other_options ----
   output$other_options <- renderUI({
     req(results())
-    if (input$year == "All") {
+    if (input$year[1]!=input$year[2]) {
       tagList(
         strong("Other Options"),
-        checkboxInput("Target", "Target population", value = F),
-        checkboxInput("Trend", "Trendline", value = F)
+        checkboxInput("target", "Target population", value = selected_target()),
+        checkboxInput("trend", "Trendline", value = selected_trend())
       )
     } else {
       tagList(
         strong("Other Options"),
-        checkboxInput("Target", "Target population", value = F)
+        checkboxInput("target", "Target population", value = selected_target())
       )
     }
   })
@@ -566,11 +628,7 @@ server <- function(input, output, session) {
   ### Export table ----
   output$export_table <- downloadHandler(
     filename = function() {
-      paste(if (input$year == "All") {
-        "AllYears"
-      } else {
-        input$year
-      },
+      paste(input$year[1], "to", input$year[2],
       if (input$EPU == "All") {
         "AllEPUs"
       } else {
@@ -590,7 +648,7 @@ server <- function(input, output, session) {
   
   ### Export plot ----
   export_plot_height <- reactive({
-    if (input$year == "All" & input$EPU == "All") {
+    if (all(input$year == year_span()) & input$EPU == "All") {
       2.75 * (ceiling(length(EPU_choices()) - 1) / 3)
     } else {
       9
@@ -600,11 +658,7 @@ server <- function(input, output, session) {
   
   output$export_plot <- downloadHandler(
     filename = function() {
-      paste(if (input$year == "All") {
-        "AllYears"
-      } else {
-        input$year
-      },
+      paste(input$year[1], "to", input$year[2],
       if (input$EPU == "All") {
         "AllEPUs"
       } else {
@@ -627,8 +681,8 @@ server <- function(input, output, session) {
       if (input$target == T) {
         "withTarget"
       },
-      if (input$year == "All" & !is.null(input$Trend)) {
-        if (input$Trend == T) {
+      if (input$year[1] != input$year[2] & !is.null(input$trend)) {
+        if (input$trend == T) {
           "withTrend"
         }
       },
@@ -705,7 +759,7 @@ server <- function(input, output, session) {
   # Create reactive plot height object
   plot_height <- reactive({
     req(input$method)
-    if (input$year == "All" & input$EPU == "All") {
+    if (input$year[1] != input$year[2] & input$EPU == "All") {
       paste0(ceiling((length(
         EPU_choices()
       ) - 1) / 3) * 25, "vh")
