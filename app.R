@@ -317,14 +317,17 @@ server <- function(input, output, session) {
     }
     table <- table_data %>%
       pivot_wider(
-        id_cols = c(year, EPU, min_count, target, calf_cow, bull_cow),
+        id_cols = c(year, EPU, min_count, target),
         names_from = "method",
         values_from = "estimate"
       ) %>%
       inner_join(
-        table_data %>% filter(!is.na(lcl_50)) %>% select(year, EPU, lcl_50, ucl_50, lcl_95, ucl_95),
+        table_data %>% filter(!is.na(lcl_50)) %>% select(year, EPU, lcl_50, ucl_50, lcl_95, ucl_95, calf_cow, bull_cow, percent_branched),
         by = c("year", "EPU")
       ) %>%
+      mutate(
+      exclamation = ifelse(Model < min_count, "!!", "")
+    ) %>%
       select(
         year,
         EPU,
@@ -332,12 +335,14 @@ server <- function(input, output, session) {
         min_count,
         Standard,
         Model,
+        exclamation,
         lcl_50,
         ucl_50,
         lcl_95,
         ucl_95,
         calf_cow,
-        bull_cow
+        bull_cow,
+        percent_branched
       )
     arrange(table, desc(year), EPU)
   })
@@ -347,11 +352,11 @@ server <- function(input, output, session) {
     table <- results_table()
     table <- table %>%
       mutate(
-        `50% Confidence Interval` = paste0(lcl_50, " to ", ucl_50),
-        `95% Confidence Interval` = paste0(lcl_95, " to ", ucl_95),
-        `Calves per 100 Cows` = round(calf_cow, digits = 0),
-        `Bulls per 100 Cows` = round(bull_cow, digits = 0)
-      ) %>%
+        `50% confidence interval` = paste0(lcl_50, " to ", ucl_50),
+        `95% confidence interval` = paste0(lcl_95, " to ", ucl_95),
+        `Calves per 100 cows` = round(calf_cow, digits = 0),
+        `Bulls per 100 cows` = round(bull_cow, digits = 0),
+        `Percent branch-antlered males` = round(percent_branched, digits=0)
       ) %>%
       select(
         Year = year,
@@ -360,10 +365,12 @@ server <- function(input, output, session) {
         `Minimum count` = min_count,
         `Standard estimate` = Standard,
         `Model estimate` = Model,
-        `50% Confidence Interval`,
-        `95% Confidence Interval`,
-        `Calves per 100 Cows`,
-        `Bulls per 100 Cows`
+        ` ` = exclamation,
+        `50% confidence interval`,
+        `95% confidence interval`,
+        `Calves per 100 cows`,
+        `Bulls per 100 cows`,
+        `Percent branch-antlered males`
       )
     table
   })
