@@ -11,7 +11,6 @@ library("stringr")
 library("lubridate")
 library("readr")
 library("chron")
-library("rgdal")
 library("readxl")
 library("Cairo")
 library("rjags")
@@ -27,9 +26,10 @@ library("R2jags")
 source("helpers_stratified.R")
 
 # Set your working directory paths and survey data file path
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 wd <- getwd()
-input_wd <- paste0(getwd(), "/input")
-output_wd <- paste0(getwd(), "/output")
+input_wd <- paste0(wd, "/input")
+output_wd <- paste0(wd, "/output")
 
 # create input and output folders if you haven't already
 dir.create(paste0(wd, "/input"))
@@ -265,7 +265,7 @@ server <- function(input, output, session) {
     }
   })
   
-  ## Construct table ----
+  ## Table ----
   results_table <- reactive({
     req(results(), input$year, input$EPU)
     table_data <- results()
@@ -312,16 +312,12 @@ server <- function(input, output, session) {
         `Calves per 100 Cows` = round(calf_cow, digits = 0),
         `Bulls per 100 Cows` = round(bull_cow, digits = 0)
       ) %>%
-      rename(
-        Year = year,
-        `Minimum count` = min_count,
-        `Population target` = target
       ) %>%
       select(
-        Year,
+        Year = year,
         EPU,
-        `Population target`,
-        `Minimum count`,
+        `Population target` = target,
+        `Minimum count` = min_count,
         `Standard estimate` = Standard,
         `Model estimate` = Model,
         `50% Confidence Interval`,
@@ -332,7 +328,7 @@ server <- function(input, output, session) {
     table
   })
   
-  ## Construct plot ----
+  ## Plot ----
   results_plot <- reactive({
     req(results(),
         input$year,
@@ -429,8 +425,8 @@ server <- function(input, output, session) {
           position = position_dodge(width = 0.3)
         )
     }
-    if (x_var_data() == "year" & !is.null(input$Trend)) {
-      if (input$Trend == T) {
+    if (x_var_data() == "year" & !is.null(input$trend)) {
+      if (input$trend == T) {
         # Add a trendline for each set of points (colored by method)
         p <- p +
           geom_smooth(
@@ -442,7 +438,7 @@ server <- function(input, output, session) {
           )
       }
     }
-    if (input$Target == T) {
+    if (input$target == T) {
       if (x_var_data() == "year") {
         p <- p +
           # Add a horizontal dotted line at the target population value
@@ -628,7 +624,7 @@ server <- function(input, output, session) {
           "50CI"
         }
       },
-      if (input$Target == T) {
+      if (input$target == T) {
         "withTarget"
       },
       if (input$year == "All" & !is.null(input$Trend)) {
