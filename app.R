@@ -42,6 +42,23 @@ ui <- fluidPage(
   titlePanel("Roosevelt Elk Abundance Estimator"),
   tabsetPanel(
     type = "tabs",
+    tabPanel("Welcome",
+             sidebarLayout(
+               sidebarPanel(
+                 br(),
+                 h3("Welcome!"),
+                 br(),
+                 p("This app is designed to make statistical modelling of elk survey data quick and easy.
+            First, format your survey data using the template."
+                 ),
+                 br(),
+                 downloadButton("download_template", "Download Template")),
+               mainPanel(
+                 div(
+                   id = "plot-container",
+                   img(src = "elk_galore.JPG",
+                       style = "width: 100%; height: 100%; display: block; margin-left: auto; margin-right: auto;")
+               )))),
     tabPanel("Model",
              sidebarLayout(
                sidebarPanel(
@@ -54,19 +71,9 @@ ui <- fluidPage(
                  downloadButton("download_results", "Download Results")
                ),
                mainPanel(
-                 h3("Welcome"),
-                 p(
-                   "This app is designed to make statistical modelling of elk survey data quick and easy.
-            First, upload your formatted Excel datasheet on the left. Once the model has run, you will
+                p("Now that your data is formatted, upload your Excel datasheet on the left. Once the model is finished running, you will
             see a download button. Click the button to export your results file. Load the
-            file in the Results tab to view your modelled elk abundance estimates."
-                 ),
-                 verbatimTextOutput("model_progress"),
-                 div(
-                   id = "plot-container",
-                   img(src = "elk_galore.JPG",
-                       style = "width: 90%; height: 90%; display: block; margin-left: auto; margin-right: auto;")
-                 ),
+            file in the Results tab to view your modelled elk abundance estimates."),
                 verbatimTextOutput("clock_output"),
                 tags$style(
                   HTML("#clock_output {
@@ -105,6 +112,18 @@ server <- function(input, output, session) {
   script_finished <- reactiveVal(FALSE)
   results_reactive <- reactiveValues(data = NULL)
   timer <- reactiveTimer(1000)
+  
+  # Welcome tab ----
+  
+  # Download template
+  output$download_template <- downloadHandler(
+    filename = function() {
+      "sightability_template.xlsx"
+    },
+    content = function(file) {
+      file.copy("www/sightability_template.xlsx", file)
+    }
+  )
   
   # Model tab ----
   
