@@ -594,7 +594,7 @@ server <- function(input, output, session) {
   })
   
   ## Sidebar UI objects ----
-  ### Year_select ----
+  ### Year slider ----
   output$Year_select <- renderUI({
     sliderInput(
       "year",
@@ -606,7 +606,8 @@ server <- function(input, output, session) {
         } else {
           selected_year()
         },
-      step = 1
+      step = 1, 
+      sep = ""
     )
   })
   
