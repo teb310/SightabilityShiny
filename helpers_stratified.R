@@ -20,6 +20,13 @@ name_fixer <- function(x){
     grepl("Theo", x, ignore.case = TRUE) ~ "Theodosia",
     grepl("Mcnab", x, ignore.case = TRUE) ~ "McNab",
     grepl("Bear", x, ignore.case = TRUE) ~ "Bear",
+    grepl("Pit", x, ignore.case = TRUE) ~ "Pitt",
+    grepl("Brem", x, ignore.case = TRUE) ~ "Brem",
+    grepl("Brit", x, ignore.case = TRUE) ~ "Brittain",
+    grepl("Clow", x, ignore.case = TRUE) ~ "Clowhom",
+    grepl("Orf", x, ignore.case = TRUE) ~ "Orford",
+    grepl("Skwa", x, ignore.case = TRUE) ~ "Skwawka",
+    grepl("Southg", x, ignore.case = TRUE) ~ "Southgate",
     TRUE ~ x
   )
   return(output)
@@ -28,11 +35,11 @@ name_fixer <- function(x){
 # Standard_survey standardizes survey types
 standard_survey <- function(x){
   output <- case_when(
-    grepl("incidental", x, ignore.case = TRUE) ~ "Incidental",
-    grepl("telemetry", x, ignore.case = TRUE) ~ "Telemetry",
-    grepl("transect", x, ignore.case = TRUE) ~ "Inventory",
-    grepl("inventory", x, ignore.case = TRUE) ~ "Inventory",
-    grepl("capture", x, ignore.case = TRUE) ~ "Capture",
+    grepl("incident", x, ignore.case = TRUE) ~ "Incidental",
+    grepl("telem", x, ignore.case = TRUE) ~ "Telemetry",
+    grepl("trans", x, ignore.case = TRUE) ~ "Inventory",
+    grepl("invent", x, ignore.case = TRUE) ~ "Inventory",
+    grepl("capt", x, ignore.case = TRUE) ~ "Capture",
     TRUE ~ "Other")
   return(output)
 }
