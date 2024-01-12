@@ -289,7 +289,6 @@ server <- function(input, output, session) {
   
   ### ci_data ----
   ci_data <- reactive({
-    req(input$CI)
     if (1 %in% input$CI & 2 %in% input$CI) {
       list(
         ucl = c(results()$ucl_95, results()$ucl_50),
@@ -399,9 +398,7 @@ server <- function(input, output, session) {
     }
     x_data <- plot_data[[x_var]]
     p <- ggplot(plot_data, aes(x = x, y = estimate, fill = method)) +
-      labs(fill = "Method",
-           color = "Method",
-           shape = "Target") +
+      labs(fill = "Method") +
       # name y axis
       scale_y_continuous("Estimated Abundance", limits = c(0,NA)) +
       # use greyscale for point fill & color
@@ -452,81 +449,100 @@ server <- function(input, output, session) {
           strip.text = element_text(size = 14)
         )
     }
+    ### plot CI ----
     # add in 95% & 50% confidence intervals as dotted lines
-    if (!is.null(ci_data()$ucl) & 1 %in% input$CI) {
-      p <- p +
-        # 95% (dashed)
-        geom_linerange(
-          aes(x, ymin = lcl_95, ymax = ucl_95),
-          linetype = 2,
-          linewidth = 1,
-          position = position_dodge(width = 0.3)
-        )
+    # if (!is.null(ci_data()$ucl) & 1 %in% input$CI) {
+    #   p <- p +
+    #     # 95% (dashed)
+    #     geom_linerange(
+    #       aes(x, ymin = lcl_95, ymax = ucl_95, linetype = "95% CI", color = "95% CI", ),
+    #       linewidth = 1,
+    #       show.legend = F,
+    #       position = position_dodge(width = 0.3)
+    #     )
+    # }
+    # if (!is.null(ci_data()$ucl) & 2 %in% input$CI) {
+    #   p <- p +
+    #     # 50% (solid)
+    #     geom_linerange(
+    #       aes(x, ymin = lcl_50, ymax = ucl_50, linetype = "50% CI", color = "50% CI"),
+    #       linewidth = 1,
+    #       position = position_dodge(width = 0.3)
+    #     )
+    # }
+    if (!is.null(ci_data()$ucl) & !is.null(input$CI)) {
+      if(input$trend == F & input$target == F) {
+        p <- p +
+          # 95% (dashed)
+          geom_linerange(
+            aes(x, ymin = lcl_95, ymax = ucl_95, linetype = "95% CI", color = "95% CI", ),
+            linewidth = 1,
+            position = position_dodge(width = 0.3)
+          ) +
+          # 50% (solid)
+          geom_linerange(
+            aes(x, ymin = lcl_50, ymax = ucl_50, linetype = "50% CI", color = "50% CI"),
+            linewidth = 1,
+            position = position_dodge(width = 0.3)
+          )
+      } else {
+        p <- p +
+          # 95% (dashed)
+          geom_linerange(
+            aes(x, ymin = lcl_95, ymax = ucl_95, linetype = "95% CI", color = "95% CI", ),
+            linewidth = 1,
+            show.legend = F,
+            position = position_dodge(width = 0.3)
+          ) +
+          # 50% (solid)
+          geom_linerange(
+            aes(x, ymin = lcl_50, ymax = ucl_50, linetype = "50% CI", color = "50% CI"),
+            linewidth = 1,
+            show.legend = F,
+            position = position_dodge(width = 0.3)
+          )
+      }
     }
-    if (!is.null(ci_data()$ucl) & 2 %in% input$CI) {
-      p <- p +
-        # 50% (solid)
-        geom_linerange(
-          aes(x, ymin = lcl_50, ymax = ucl_50),
-          linewidth = 1,
-          position = position_dodge(width = 0.3)
-        )
-    }
+    ### plot target ----
+     if (input$target == T) {
+      if (x_var_data() == "year") {
+        # Add a horizontal dotted line at the target population value
+        p <- p +
+          geom_hline(
+            aes(yintercept = target, linetype = "Target", color = "Target"),
+            linewidth = 1
+          )
+      } else {
+        # Add a red point for the target number
+        p <- p +
+          geom_point(
+            aes(x = x, y = target, color="Target"),
+            size = 2,
+            shape = 8
+          ) +
+          scale_color_manual("Target" = "red") +
+          labs(color = "")
+      }
+     }
+    ### plot trend ----
     if (x_var_data() == "year" & !is.null(input$trend)) {
       if (input$trend == T) {
         # Add a trendline for each set of points (colored by method)
         p <- p +
           geom_smooth(
-            aes(color = method),
+            aes(color = method, linetype = method),
             method = lm,
             se = FALSE,
             linewidth = 1,
+            show.legend = F,
             position = position_dodge(width = 0.3)
           )
       }
     }
-    if (input$target == T) {
-      if (x_var_data() == "year") {
-        p <- p +
-          # Add a horizontal dotted line at the target population value
-          geom_hline(
-            aes(
-              yintercept = target,
-              linetype = "Target",
-              color = "Target"
-            ),
-            linetype = 2,
-            color = 'red',
-            linewidth = 1
-          )
-      } else {
-        p <- p +
-          # add red point for target number
-          geom_point(
-            aes(
-              x = x,
-              y = target,
-              shape = "Target"
-            ),
-            shape = 8,
-            size = 2,
-            color = "red"
-          )
-      }
+    if (!is.null(input$CI) & (input$target == T | input$trend == T)) {
+      
     }
-    p <- p +
-      # Add theme elements
-      theme(
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(),
-        axis.line = element_line(colour = "black"),
-        axis.title.x = element_text(size = 16),
-        axis.title.y = element_text(size = 16),
-        legend.key.size = unit(0.75, 'in'),
-        legend.text = element_text(size = 12),
-        legend.title = element_text(size = 14)
-      )
+    ### plot points ----
     # Add points on top of everything
     if (input$EPU == "All" & input$year[1] != input$year[2]) {
       p <- p +
@@ -543,6 +559,37 @@ server <- function(input, output, session) {
           position = position_dodge(width = 0.3)
         )
     }
+    p <- p  +
+      # Add theme elements
+      theme(
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"),
+        axis.title.x = element_text(size = 16),
+        axis.title.y = element_text(size = 16),
+        legend.key.size = unit(0.75, 'in'),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14)) +
+          # add scaling info for legend items
+          scale_linetype_manual(values = c(
+            "Model" = 1,
+            "Standard" = 1,
+            "Target" = 2,
+            "95% CI" = 2,
+            "50% CI" = 1
+          )) +
+          scale_color_manual (
+            values = c(
+              "Model" = "black",
+              "Standard" = "grey",
+              "Target" = "red",
+              "95% CI" = "darkblue",
+              "50% CI" = "darkblue"
+            )
+          ) +
+          labs(linetype = "",
+               color = "")
     p
   })
   
