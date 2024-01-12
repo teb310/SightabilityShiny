@@ -28,7 +28,7 @@ setwd(input_wd)
 
 # Extract observations from all years
 # If you didn't name your survey data sheets with "Data", replace below
-obs.all <- compile_sheets(file, "Data")
+obs.all <- compile_sheets(file, "\\d{4} Data")
 
 # fix EPU names & survey types
 obs.all$EPU <- name_fixer(obs.all$EPU)
@@ -363,7 +363,8 @@ results.all <- left_join(model_results,
 # calculate calf:100 cows and bull:100 cows ratios
 results.all <- results.all %>%
   mutate("calf_cow" = calf*100/cow,
-         "bull_cow" = bull*100/cow) %>%
+         "bull_cow" = bull*100/cow,
+         "percent_branched" = bull/(bull+spike)*100) %>%
   select(-cow, -calf, -bull, -spike)
 
 # uncomment any commented sections below if you're including mHT estimates
@@ -384,6 +385,8 @@ results.long <- pivot_longer(results.all,
            if_else(method == "Model", calf_cow, as.double(NA)),
          bull_cow =
            if_else(method == "Model", bull_cow, as.double(NA)),
+         percent_branched = 
+           if_else(method == "Model", percent_branched, as.double(NA)),
          Rhat = 
            if_else(method == "Model", Rhat, as.double(NA)),
          cv = 
@@ -399,7 +402,8 @@ results.long <- pivot_longer(results.all,
          lcl_95, 
          ucl_95, 
          calf_cow, 
-         bull_cow, 
+         bull_cow,
+         percent_branched,
          cv, 
          Rhat,
          n.eff)
