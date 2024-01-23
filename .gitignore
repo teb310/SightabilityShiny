@@ -2,7 +2,8 @@
 .Rhistory
 .RData
 .Ruserdata
-*.xlsx
+input/*.xlsx
+output/*.xlsx
 *.rdata
 output/2023_All_EPUs_All_methods_.png
 output/Results_complete.csv
@@ -27,3 +28,4 @@ rsconnect/shinyapps.io/3ahyqy-tristen-brush/ElkAbundanceEstimator.dcf
 *.jpg
 *.pdf
 rsconnect/shinyapps.io/3ahyqy-tristen-brush/ElkAbundanceEstimator.dcf
+SightabilityShiny_reactive_graph.xlsx

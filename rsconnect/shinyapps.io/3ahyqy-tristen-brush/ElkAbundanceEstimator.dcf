@@ -5,10 +5,7 @@ account: 3ahyqy-tristen-brush
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 9441907
-bundleId: 7627733
+bundleId: 8151619
 url: https://3ahyqy-tristen-brush.shinyapps.io/ElkAbundanceEstimator/
-when: 1693438746.27258
-lastSyncTime: 1693438746.2726
 asMultiple: FALSE
 asStatic: FALSE
-ignoredFiles: agreement.R|helpers.R|model.R|progress.txt|SightabilityShiny_reactive_graph.xlsx
