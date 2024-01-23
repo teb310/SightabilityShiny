@@ -12,7 +12,6 @@ library("lubridate")
 library("readr")
 library("chron")
 library("readxl")
-library("Cairo")
 library("rjags")
 library("coda")
 library("truncnorm")
@@ -26,7 +25,6 @@ library("R2jags")
 source("helpers_stratified.R")
 
 # Set your working directory paths and survey data file path
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 wd <- getwd()
 input_wd <- paste0(wd, "/input")
 output_wd <- paste0(wd, "/output")
@@ -71,6 +69,9 @@ ui <- fluidPage(
                  downloadButton("download_results", "Download Results")
                ),
                mainPanel(
+                 br(),
+                 h3("Run the model"),
+                 br(),
                 p("Now that your data is formatted, upload your Excel datasheet on the left. Once the model is finished running, you will
             see a download button. Click the button to export your results file. Load the
             file in the Results tab to view your modelled elk abundance estimates."),
@@ -257,7 +258,7 @@ server <- function(input, output, session) {
   })
   
   ### selected_method ----
-  selected_method <- reactiveVal()
+  selected_method <- reactiveVal("All")
   # update when it's changed in either tab
   observeEvent(input$method, {
     selected_method(input$method)
@@ -412,10 +413,14 @@ server <- function(input, output, session) {
     if (input$EPU != "All") {
       plot_data <- filter(plot_data, plot_data$EPU == input$EPU)
     }
-    if (input$method != "All") {
-      plot_data <- filter(plot_data, plot_data$method == input$method)
+    if(input$method != "All") {
+        plot_data <- filter(plot_data, plot_data$method == input$method)
+    }
+    if(x_var == "EPU") {
+      selected_trend(FALSE)
     }
     x_data <- plot_data[[x_var]]
+    ### create plot ----
     p <- ggplot(plot_data, aes(x = x, y = estimate, fill = method)) +
       labs(fill = "Method") +
       # name y axis
@@ -426,6 +431,7 @@ server <- function(input, output, session) {
       # facet wrap
       facet_wrap(as.formula(paste("~", facet())), scales = "free", ncol =
                    3)
+    
     if (x_var_data() == "year") {
       # make sure there's only one label per year
       p <- p +
@@ -468,60 +474,85 @@ server <- function(input, output, session) {
           strip.text = element_text(size = 14)
         )
     }
-    ### plot CI ----
-    # add in 95% & 50% confidence intervals as dotted lines
-    # if (!is.null(ci_data()$ucl) & 1 %in% input$CI) {
-    #   p <- p +
-    #     # 95% (dashed)
-    #     geom_linerange(
-    #       aes(x, ymin = lcl_95, ymax = ucl_95, linetype = "95% CI", color = "95% CI", ),
-    #       linewidth = 1,
-    #       show.legend = F,
-    #       position = position_dodge(width = 0.3)
-    #     )
-    # }
-    # if (!is.null(ci_data()$ucl) & 2 %in% input$CI) {
-    #   p <- p +
-    #     # 50% (solid)
-    #     geom_linerange(
-    #       aes(x, ymin = lcl_50, ymax = ucl_50, linetype = "50% CI", color = "50% CI"),
-    #       linewidth = 1,
-    #       position = position_dodge(width = 0.3)
-    #     )
-    # }
+    ### plot CIs ----
     if (!is.null(ci_data()$ucl) & !is.null(input$CI)) {
-      if(input$trend == F & input$target == F) {
-        p <- p +
+      if (x_var_data() == "EPU") {
+          if(1 %in% input$CI) {
+            p <- p +
           # 95% (dashed)
           geom_linerange(
-            aes(x, ymin = lcl_95, ymax = ucl_95, linetype = "95% CI", color = "95% CI", ),
+            aes(x, ymin = lcl_95, ymax = ucl_95, linetype = "95% CI"),
             linewidth = 1,
             position = position_dodge(width = 0.3)
-          ) +
+          )
+          }
+          if(2 %in% input$CI) {
+            p <- p +
+          # 50% (solid)
+          geom_linerange(
+            aes(x, ymin = lcl_50, ymax = ucl_50, linetype = "50% CI"),
+            linewidth = 1,
+            position = position_dodge(width = 0.3)
+          )
+          }
+        } else {
+        if(input$target == T) {
+          if(1 %in% input$CI) {
+          p <- p +
+          # 95% (dashed)
+          geom_linerange(
+            aes(x, ymin = lcl_95, ymax = ucl_95, linetype = "95% CI", color = "95% CI"),
+            linewidth = 1,
+            show.legend = F,
+            position = position_dodge(width = 0.3)
+          )}
+        if(2 %in% input$CI) {
+          p <- p +
           # 50% (solid)
           geom_linerange(
             aes(x, ymin = lcl_50, ymax = ucl_50, linetype = "50% CI", color = "50% CI"),
             linewidth = 1,
-            position = position_dodge(width = 0.3)
-          )
-      } else {
-        p <- p +
-          # 95% (dashed)
-          geom_linerange(
-            aes(x, ymin = lcl_95, ymax = ucl_95, linetype = "95% CI", color = "95% CI", ),
-            linewidth = 1,
             show.legend = F,
             position = position_dodge(width = 0.3)
-          ) +
-          # 50% (solid)
-          geom_linerange(
-            aes(x, ymin = lcl_50, ymax = ucl_50, linetype = "50% CI", color = "50% CI"),
-            linewidth = 1,
-            show.legend = F,
-            position = position_dodge(width = 0.3)
-          )
+          )}
+        } else if (selected_trend()==T) {
+          if(1 %in% input$CI) {
+            p <- p +
+              # 95% (dashed)
+              geom_linerange(
+                aes(x, ymin = lcl_95, ymax = ucl_95, linetype = "95% CI", color = "95% CI"),
+                linewidth = 1,
+                position = position_dodge(width = 0.3)
+              )}
+          if(2 %in% input$CI) {
+            p <- p +
+              # 50% (solid)
+              geom_linerange(
+                aes(x, ymin = lcl_50, ymax = ucl_50, linetype = "50% CI", color = "50% CI"),
+                linewidth = 1,
+                position = position_dodge(width = 0.3)
+              )}
+        } else {
+          if (1 %in% input$CI) {
+          p <- p +
+            # 95% (dashed)
+            geom_linerange(
+              aes(x, ymin = lcl_95, ymax = ucl_95, linetype = "95% CI"),
+              linewidth = 1,
+              position = position_dodge(width = 0.3)
+            )}
+        if(2 %in% input$CI) {
+          p <- p +
+            # 50% (solid)
+            geom_linerange(
+              aes(x, ymin = lcl_50, ymax = ucl_50, linetype = "50% CI"),
+              linewidth = 1,
+              position = position_dodge(width = 0.3))
+        }
       }
+        }
     }
+    
     ### plot target ----
      if (input$target == T) {
       if (x_var_data() == "year") {
@@ -532,17 +563,15 @@ server <- function(input, output, session) {
             linewidth = 1
           )
       } else {
-        # Add a red point for the target number
         p <- p +
+          # target point
           geom_point(
-            aes(x = x, y = target, color="Target"),
+            aes(x = x, y = target, color = "Target"),
             size = 2,
             shape = 8
-          ) +
-          scale_color_manual("Target" = "red") +
-          labs(color = "")
+          )
+        }
       }
-     }
     ### plot trend ----
     if (x_var_data() == "year" & !is.null(input$trend)) {
       if (input$trend == T) {
@@ -557,9 +586,6 @@ server <- function(input, output, session) {
             position = position_dodge(width = 0.3)
           )
       }
-    }
-    if (!is.null(input$CI) & (input$target == T | input$trend == T)) {
-      
     }
     ### plot points ----
     # Add points on top of everything
@@ -578,6 +604,58 @@ server <- function(input, output, session) {
           position = position_dodge(width = 0.3)
         )
     }
+    ### Legend ----
+    if (selected_trend() == T) {
+      p <- p +
+        # add scaling info for legend items
+        scale_linetype_manual(values = c(
+          "Model" = 1,
+          "Standard" = 1,
+          "Target" = 2,
+          "95% CI" = 3,
+          "50% CI" = 1
+        )) +
+        scale_color_manual (
+          values = c(
+            "Model" = "black",
+            "Standard" = "grey",
+            "Target" = "red",
+            "95% CI" = "steelblue",
+            "50% CI" = "steelblue"
+          )
+        ) +
+        labs(linetype = "",
+             color = "") 
+      } else {
+        if(input$target == F) {
+          p <- p +
+            # add scaling info for legend items
+            scale_linetype_manual(values = c(
+              "95% CI" = 3,
+              "50% CI" = 1
+            )) +
+            labs(linetype = "")
+        } else if(x_var_data()=="EPU") {
+          p <- p +
+            scale_linetype_manual(values = c(
+            "95% CI" = 3,
+            "50% CI" = 1
+          )) +
+            scale_color_manual(values = c("Target" = "red")) +
+            labs(linetype = "",
+                 color = "")
+        } else {
+          p <- p +
+          scale_linetype_manual(values = c(
+            "95% CI" = 3,
+            "50% CI" = 1,
+            "Target" = 2
+          )) +
+          scale_color_manual(values = c("95% CI" = "black", "50% CI" = "black", "Target" = "red")) +
+          labs(linetype = "",
+               color = "")}
+      }
+    
     p <- p  +
       # Add theme elements
       theme(
@@ -589,26 +667,8 @@ server <- function(input, output, session) {
         axis.title.y = element_text(size = 16),
         legend.key.size = unit(0.75, 'in'),
         legend.text = element_text(size = 12),
-        legend.title = element_text(size = 14)) +
-          # add scaling info for legend items
-          scale_linetype_manual(values = c(
-            "Model" = 1,
-            "Standard" = 1,
-            "Target" = 2,
-            "95% CI" = 2,
-            "50% CI" = 1
-          )) +
-          scale_color_manual (
-            values = c(
-              "Model" = "black",
-              "Standard" = "grey",
-              "Target" = "red",
-              "95% CI" = "darkblue",
-              "50% CI" = "darkblue"
-            )
-          ) +
-          labs(linetype = "",
-               color = "")
+        legend.title = element_text(size = 14)) 
+    
     p
   })
   
@@ -658,7 +718,7 @@ server <- function(input, output, session) {
       "method",
       label = strong("Method"),
       choices = list("All", "Model", "Standard"),
-      selected = selected_method()
+      selected = "All"
     )
   })
   
