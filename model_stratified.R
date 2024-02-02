@@ -5,13 +5,14 @@ runModel <- function(file_path) {
 # 1 Load and clean ####
 
 # ## 1.1 LOAD DATA ####
-# list.of.packages <- c("shiny", "shinyjs", "bslib", "DT", "outliers", "bayesplot", "tidyverse", "lubridate","chron","rgdal", "readxl", "Cairo", "rjags","coda","truncnorm", "doParallel", "nimble", "xtable", "statip", "R2jags", "SimplyAgree")
+# UNCOMMENT BELOW IF WORKING OUTSIDE SHINY APP
+# list.of.packages <- c("shiny", "shinyjs", "bslib", "DT", "outliers", "bayesplot", "tidyverse", "lubridate","chron", "readxl", "Cairo", "rjags","coda","truncnorm", "doParallel", "nimble", "xtable", "statip", "R2jags", "SimplyAgree")
 # # Check you have them and load them
 # new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 # if(length(new.packages)) install.packages(new.packages)
 # lapply(list.of.packages, require, character.only = TRUE)
 # source("helpers_stratified.R")
-# 
+
 # # Set your working directory paths and survey data file path
 # wd <- getwd()
 # input_wd <- paste0(wd,"/input")
@@ -20,11 +21,11 @@ runModel <- function(file_path) {
 # # create input and output folders if you haven't already
 # dir.create(input_wd)
 # dir.create(output_wd)
+# file <- "C:/Users/TBRUSH/R/SightabilityModels/old_shiny/input/2013_to_2023_data.xlsx"
 
 file <- paste0(file_path())
 setwd(input_wd)
 
-# file <- "test_data.xlsx"
 # Save EPU names from reliable source
 EPU_list <- read_excel(file, sheet = "EPU_list")
 EPU_names <- unique(EPU_list$EPU)
@@ -39,7 +40,7 @@ obs.all$survey.type <- standard_survey(obs.all$survey.type)
 
 # Bring in summary data from each year
 # This acts as a list of all the EPUs that were properly surveyed that year
-eff <- compile_sheets(file, "Summary") %>%
+eff <- compile_sheets(file, "\\d{4} Summary") %>%
   filter(!is.na(min_count))
 
 eff$EPU <- name_fixer(EPU_list, eff$EPU)
@@ -50,6 +51,7 @@ eff$EPU <- name_fixer(EPU_list, eff$EPU)
 
 # we will have one sightability dataframe for all sexes/ages, which means we're assuming
 # equal sightability of bulls, cows, and calves -> may not be true.
+# cows/bulls could be stratified in the future but for now we don't have enough collared bulls
 
 sight <- obs.all %>%
   # we'll create a field to tell us whether each year counts toward sightability data
@@ -175,6 +177,7 @@ sight.dat <- sight %>%
   )  %>%
   # standardize habitat
   mutate(
+    # HABITAT KEY WORDS
     # 1 - rock / other (gravel, landfill, road, slide, other)
     # 2 - meadow / riparian (field, meadow, riparian, wetland, river)
     # 3 - cutblock / powerline (block, powerline, NSR, FTG)
@@ -197,6 +200,7 @@ sight.dat <- sight %>%
   select(a, s, t, x.tilde, z.tilde)
 
 ### 2.1.1 test correlations ####
+# UNCOMMENT BELOW IF YOU WANT TO TEST THE CORRELATION OF GROUP SIZE, HABITAT, ACTIVITY, VOC WITH SIGHTABILITY
 # sight.dat %>% group_by(z.tilde) %>% summarize(mean = mean(x.tilde))
 # 
 # test <- "kendall"
@@ -367,7 +371,6 @@ results.all <- results.all %>%
          "percent_branched" = bull/(bull+spike)*100) %>%
   select(-cow, -calf, -bull, -spike)
 
-# uncomment any commented sections below if you're including mHT estimates
 results.long <- pivot_longer(results.all,
                              c(Model,
                                Standard),
@@ -412,6 +415,7 @@ results.long
 
 ## 4.5 EXTRAS ####
 
+# UNCOMMENT BELOW TO TEST AGREEMENT BETWEEN METHODS
 # results.all.stats <- results.all %>%
 #   mutate(diff = Model-Standard,
 #          within_50 = if_else(Standard>=lcl_50 & Standard <=ucl_50, T, F),
