@@ -25,13 +25,16 @@ file <- paste0(file_path())
 setwd(input_wd)
 
 # file <- "test_data.xlsx"
+# Save EPU names from reliable source
+EPU_list <- read_excel(file, sheet = "EPU_list")
+EPU_names <- unique(EPU_list$EPU)
 
 # Extract observations from all years
 # If you didn't name your survey data sheets with "Data", replace below
 obs.all <- compile_sheets(file, "\\d{4} Data")
 
 # fix EPU names & survey types
-obs.all$EPU <- name_fixer(obs.all$EPU)
+obs.all$EPU <- name_fixer(EPU_list, obs.all$EPU)
 obs.all$survey.type <- standard_survey(obs.all$survey.type) 
 
 # Bring in summary data from each year
@@ -39,12 +42,9 @@ obs.all$survey.type <- standard_survey(obs.all$survey.type)
 eff <- compile_sheets(file, "Summary") %>%
   filter(!is.na(min_count))
 
-eff$EPU <- name_fixer(eff$EPU)
+eff$EPU <- name_fixer(EPU_list, eff$EPU)
 
-# Save EPU names from reliable source
-setwd(wd)
-EPU.areas <- read_csv("www/EPU_areas.csv")
-EPU.list <- as.character(EPU.areas$EPU)
+
 
 ## 1.4 SIGHTABILITY DATA ####
 
@@ -102,10 +102,10 @@ obs <- obs %>%
 ## 1.6 EFFORT ####
 
 # Amend EPU.list to only include surveyed EPUs, then assign ID numbers
-EPU.list <- data.frame(EPU = unique(obs$subunit)) %>%
+EPU.ID <- data.frame(EPU = unique(obs$subunit)) %>%
   mutate(ID = seq(1,length(EPU),1))
 
-eff <- inner_join(eff, EPU.list, by="EPU")
+eff <- inner_join(eff, EPU.ID, by="EPU")
 
 # Add ID to obs
 
@@ -269,7 +269,7 @@ jags_input_names <- c("sight.dat", "oper.dat", "plot.dat", "scalar.dat", "eff", 
 jags_input <- ls(pattern = paste0("^", paste(jags_input_names, collapse = "|")))
 save(list = jags_input, file = paste0("jags_input_", format(Sys.time(), "%Y%b%d_%H%M"), ".rdata"))
 # other inputs
-other_inputs <- c("compile_sheets", "name_fixer", "rjags_to_table", "wd", "input_wd","output_wd","file","EPU.list","year.ID", "stratum.ID", "eff")
+other_inputs <- c("compile_sheets", "name_fixer", "rjags_to_table", "wd", "input_wd","output_wd","file","EPU.ID","year.ID", "stratum.ID", "eff")
 save(list= other_inputs, file=paste0("other_inputs_", format(Sys.time(), "%Y%b%d_%H%M"), ".rdata"))
 
 files_to_keep <- c(jags_input, other_inputs, "other_inputs")
@@ -329,7 +329,7 @@ standard$EPU <- name_fixer(standard$EPU)
 
 ### 4.3.1 Bayesian ####
 
-jags_table <- rjags_to_table(jags_output, scalar.dat, year.ID, EPU.list, stratum.ID)
+jags_table <- rjags_to_table(jags_output, scalar.dat, year.ID, EPU.ID, stratum.ID)
 
 total <- jags_table %>%
   filter(stratum=="total") %>%

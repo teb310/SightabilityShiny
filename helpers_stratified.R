@@ -1,34 +1,15 @@
 # Name_fixer converts misspelled or abbreviated EPU names to standard names
-name_fixer <- function(x){
-  output <- case_when(
-    grepl("Rainy", x, ignore.case = TRUE) ~ "Rainy-Gray",
-    grepl("Narrow", x, ignore.case = TRUE) ~ "Tzoonie-Narrows",
-    grepl("Desert", x, ignore.case = TRUE) ~ "Deserted-Stakawus",
-    grepl("Cheh", x, ignore.case = TRUE) ~ "Chehalis",
-    grepl("Sech", x, ignore.case = TRUE) ~ "Sechelt Peninsula",
-    grepl("Homa", x, ignore.case = TRUE) ~ "Homathko",
-    grepl("Lois", x, ignore.case = TRUE) ~ "Lois",
-    grepl("Eldr", x, ignore.case = TRUE) ~ "Eldred",
-    grepl("Hasl", x, ignore.case = TRUE) ~ "Haslam",
-    grepl("Dani", x, ignore.case = TRUE) ~ "Powell-Daniels",
-    grepl("Quat", x, ignore.case = TRUE) ~ "Quatam",
-    grepl("Lill", x, ignore.case = TRUE) ~ "Lower Lillooet",
-    grepl("Van", x, ignore.case = TRUE) ~ "Vancouver",
-    grepl("Squam", x, ignore.case = TRUE) ~ "Squamish",
-    grepl("Indian", x, ignore.case = TRUE) ~ "Indian",
-    grepl("Stave", x, ignore.case = TRUE) ~ "Stave",
-    grepl("Theo", x, ignore.case = TRUE) ~ "Theodosia",
-    grepl("Mcnab", x, ignore.case = TRUE) ~ "McNab",
-    grepl("Bear", x, ignore.case = TRUE) ~ "Bear",
-    grepl("Pit", x, ignore.case = TRUE) ~ "Pitt",
-    grepl("Brem", x, ignore.case = TRUE) ~ "Brem",
-    grepl("Brit", x, ignore.case = TRUE) ~ "Brittain",
-    grepl("Clow", x, ignore.case = TRUE) ~ "Clowhom",
-    grepl("Orf", x, ignore.case = TRUE) ~ "Orford",
-    grepl("Skwa", x, ignore.case = TRUE) ~ "Skwawka",
-    grepl("Southg", x, ignore.case = TRUE) ~ "Southgate",
-    TRUE ~ x
-  )
+name_fixer <- function(EPU_list, x) {
+  output <- character(length(x))
+  
+  for (i in seq_along(x)) {
+    for(h in seq_along(EPU_list$abbr)) {
+      if(str_detect(x[i], regex(EPU_list$abbr[h], ignore_case = T))){
+        output[i] <- EPU_list$EPU[h]
+        break
+      } 
+    }
+  }
   return(output)
 }
 
