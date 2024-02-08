@@ -1,4 +1,6 @@
 # Elk Sightability Analysis
+# 0 SETUP ---------------------------------------------------------------------
+
 # get script start time
 start_time <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
 
@@ -26,11 +28,19 @@ runModel <- function(file_path) {
   # get ready to catch errors
   sink("error.txt")
   tryCatch({
+  
+# 1 LOAD AND CLEAN ------------------------------------------------------------
+
+## 1.1 Load packages ####
+
 library(readxl)
 library(tidyverse)
 library(R2jags)
 
 wd <- getwd()
+
+## 1.2 Build functions ####
+
 # Name_fixer converts misspelled or abbreviated EPU names to standard names
 name_fixer <- function(EPU_list, EPU_string) {
   output <- character(length(EPU_string))
@@ -45,9 +55,6 @@ name_fixer <- function(EPU_list, EPU_string) {
   return(output)
 }
 
-# 1 Load and clean ####
-
-# ## 1.1 LOAD DATA ####
 # Standard_survey standardizes survey types
 standard_survey <- function(survey_string){
   output <- case_when(
@@ -180,6 +187,8 @@ rjags_to_table <- function(jagsoutput, scalardat, year_list, EPU.ID, stratum_lis
   return(output)
 }
 
+## 1.3 Load data ####
+
 # Save EPU names from reliable source
 EPU_list <- read_excel(file_path, sheet = "EPU_list")
 EPU_names <- unique(EPU_list$EPU)
@@ -199,9 +208,7 @@ eff <- compile_sheets(file_path, "\\d{4} Summary") %>%
 
 eff$EPU <- name_fixer(EPU_list, eff$EPU)
 
-
-
-## 1.4 SIGHTABILITY DATA ####
+## 1.4 Sightability dataset ####
 
 # we will have one sightability dataframe for all sexes/ages, which means we're assuming
 # equal sightability of bulls, cows, and calves -> may not be true.
@@ -227,11 +234,12 @@ for(i in seq_along(sight$collars)){
     sight.dup <- rbind(sight.dup, rep(sight[i,], sight$collars[i]-1))
   }
 }
+
 if(nrow(sight.dup)>0){
 sight <- bind_rows(sight, sight.dup)
 }
 
-## 1.6 OBSERVATIONAL DATASET ####
+## 1.5 Observational dataset ####
 
 # make sure we're only keeping data from EPUs with summary data that year
 obs <- inner_join(obs.all, eff %>% select(year, EPU), by=c("EPU","year")) %>%
@@ -254,7 +262,7 @@ obs <- obs %>%
       as.numeric(UC)),
     total = as.numeric(cow+calf+spike+bull+UC))
 
-## 1.6 EFFORT ####
+## 1.6 Effort ####
 
 # Amend EPU.list to only include surveyed EPUs, then assign ID numbers
 EPU.ID <- data.frame(EPU = unique(obs$subunit)) %>%
@@ -283,6 +291,7 @@ obs <- inner_join(obs, eff %>% select(year, EPU, ID), by=c(c("subunit"="EPU"),"y
     subunits = ID,
     .keep="unused")
 
+## 1.7 Telem adjustment ####
 #including telemetry obs helps some EPUs but hurts others -> depends on effect on average group size
 
 group <- obs %>%
@@ -313,9 +322,9 @@ telem.stats <- obs %>%
 obs <- left_join(obs, telem.stats %>% select(year, subunit, stratum, keep_telem), by=c("year", "subunit", "stratum")) %>%
   filter(!(survey.type=="Telemetry"& keep_telem==F))
 
-# 2 Prepare data ####
+# 2 PREPARE DATA -------------------------------------------------------------
 
-## 2.1 SIGHT DAT ####
+## 2.1 Sight.dat ####
 
 # s = habitat indicator ()
 # x = visual obstrcution measurements associated with the test trial data used to develop the sightability model
@@ -376,9 +385,9 @@ sight.dat <- sight %>%
 # voc is the only factor significantly correlated with sightability -> select only voc
 sight.dat <- sight.dat %>% select(x.tilde, z.tilde)
 
-## 2.2 OPER DAT ####
+## 2.2 Oper.dat ####
 
-### 2.2.1 Non-augmented data ####
+### 2.2.1 non-augmented data ####
 
 # Get year ID
 year.ID <- as.data.frame(matrix(NA, length(unique(obs$year)), 2))
@@ -400,25 +409,24 @@ oper.dat <- oper.dat %>%
 oper.dat <- oper.dat %>%
   oper.datify()
 
-### 2.2.2 Augmented data ####
+### 2.2.2 augmented data ####
 
 oper.dat <- oper.dat %>%
   augment()
 
-## 2.3 PLOT DAT ####
+## 2.3 Plot.dat ####
 
 plot.dat <- oper.dat %>%
   plot.datify()
 
-## 2.4 SCALAR DAT ####
+## 2.4 Scalar.dat and sums ####
 scalar.dat <- scalar.datify(oper.dat, plot.dat, sight.dat)
 
 # Create scalar.sums to ease modelling
 # tells us how many rows belong to each year/stratum combo
 scalar.sums <- scalar.sumsify(plot.dat, scalar.dat)
 
-## 2.5 SAVE INPUTS ####
-
+## 2.5 Save inputs ####
 # JAGS inputs
 jags_input_names <- c("sight.dat", "oper.dat", "plot.dat", "scalar.dat", "eff", "scalar.sums")
 jags_input <- ls(pattern = paste0("^", paste(jags_input_names, collapse = "|")))
@@ -431,9 +439,9 @@ files_to_keep <- c(jags_input, other_inputs, "other_inputs")
 
 rm(list = setdiff(ls(), files_to_keep))
 
-# 3 Bayesian Analysis ####
+# 3 BAYESIAN ANALYSIS ---------------------------------------------------------
 
-## 3.1 SET PARAMETERS ####
+## 3.1 Set parameters ####
 
 # specify initial values
 inits <-  function() list(bo=runif(1), bvoc=runif(1))
@@ -447,7 +455,6 @@ nt <- 2
 nb <- ni/2
 nc <- 3   
 
-## 3.2 RUN THE MODEL ####
 # record any error messages that occured since tryCatch()
 }, error = function(e) {
   # Print the error message
@@ -457,6 +464,7 @@ nc <- 3
 # finish sinking to errors.txt
 sink()
 
+## 3.2 Run the model ####
 
 # All data
 bundle.dat <- list(x.tilde=sight.dat$x.tilde, z.tilde=sight.dat$z.tilde, #sight.dat
@@ -465,8 +473,6 @@ bundle.dat <- list(x.tilde=sight.dat$x.tilde, z.tilde=sight.dat$z.tilde, #sight.
                    R=scalar.dat$R, Ngroups=scalar.dat$Ngroups, Nsubunits.yr=scalar.dat$Nsubunits.yr, scalars=scalar.sums, #scalar.dat
                    years=length(unique(plot.dat$yr.plots)), stratums=length(unique(plot.dat$h.plots)))
 
-
-## 3.4 SAVE OUTPUTS ####
 # sink all progress to progress.txt
 sink("progress.txt")
 cat("Start time:", paste(start_time), "\n\n\n")
@@ -503,6 +509,7 @@ for (i in 2:50) {
   sink()
 }
 
+## 3.3 Save outputs ####
 
 jags_output_names <- c("jags_output", "scalar.dat")
 jags_outputs <- ls(pattern = paste0("^", paste(jags_output_names, collapse = "|")))
@@ -511,18 +518,18 @@ save(list = jags_outputs, file=paste0("output/jags_output_", format(Sys.time(), 
 files_to_keep <- c(jags_outputs, other_inputs)
 rm(list = setdiff(ls(), files_to_keep))
 
-# 4 Plot & Report ####
+# 4 OUTPUT -------------------------------------------------------------------
 
-## 4.1 LOAD DATA ####
+## 4.1 Load ####
 
 # Get summary data (i.e. standard estimates) from your excel file
 standard <- compile_sheets(file_path, "\\d{4} Summary") %>%
   rename(Standard = estimate)
 standard$EPU <- name_fixer(EPU_list, standard$EPU)
 
-## 4.3 CLEAN OUTPUTS ####
+## 4.2 Clean ####
 
-### 4.3.1 Bayesian ####
+### 4.2.1 bayesian ####
 
 jags_table <- rjags_to_table(jags_output, scalar.dat, year.ID, EPU.ID, stratum.ID)
 
@@ -536,7 +543,7 @@ model_results <- jags_table %>%
   select(-total) %>%
   left_join(total, by=c("year", "EPU"))
 
-### 4.3.2 Standard ####
+### 4.2.2 standard ####
 
 # Need to extract most recent target numbers
 target <- standard %>%
@@ -548,7 +555,7 @@ standard <- standard %>%
   select(-target) %>%
   left_join(target, by="EPU")
 
-### 4.3.3 Combine tables ####
+### 4.2.3 combine tables ####
 
 # create a dataframe that combines the important elements of all dataframes
 results.all <- left_join(model_results,
@@ -622,7 +629,7 @@ sink("running.txt")
 cat("FALSE")
 sink()
 
-## 4.5 EXTRAS ####
+## 4.4 Extras ####
 
 # UNCOMMENT BELOW TO TEST AGREEMENT BETWEEN METHODS
 # results.all.stats <- results.all %>%

@@ -1,4 +1,5 @@
 # Elk Population Estimator
+# Setup -----------------------------------------------------------------------
 
 library("shiny")
 library("shinyjs")
@@ -30,10 +31,10 @@ output_wd <- paste0(wd, "/output")
 dir.create(paste0(wd, "/input"))
 dir.create(paste0(wd, "/output"))
 
-# Define UI ----
 # set tz (computer automatically does UTM)
 Sys.setenv(TZ = "America/Los_Angeles")
 
+# Define UI -------------------------------------------------------------------
 ui <- fluidPage(
   bootstrapLib(bs_theme(bootswatch = "spacelab")),
   useShinyjs(),
@@ -119,10 +120,10 @@ ui <- fluidPage(
 )
 
 
-# Define server logic ----
+# Define server logic ---------------------------------------------------------
 server <- function(input, output, session) {
   
-  # Welcome tab ----
+  # Welcome tab ---------------------------------------------------------------
   
   # Download template
   output$download_template <- downloadHandler(
@@ -134,8 +135,9 @@ server <- function(input, output, session) {
     }
   )
   
-  # Model tab ----
+  # Model tab -----------------------------------------------------------------
   
+    ## Clock ------
     # clock to prevent timing out
     clock <- reactive({
       invalidateLater(1000)
@@ -193,9 +195,13 @@ server <- function(input, output, session) {
         shinyjs::show("run_script")
       }
     })
+    
+    ## Run model ----
+    # Run the R script on the uploaded file
     observeEvent(input$run_script, {
         system2("Rscript", args = c("model_stratified.R", file_path()), wait=F)
     })
+    # Show console outputs
     output$model_progress <- renderUI({
       HTML(paste0("<div style='color: #00AA10;'>", rv$textstream, "</div>"))
     })
@@ -203,6 +209,7 @@ server <- function(input, output, session) {
       HTML(paste0("<div style='color: #FF0000;'>", rv$errorstream, "</div>"))
     })
     
+    # Show script status
     output$script_status <- renderUI({
       if(rv$running) {
         status <- "Script running..."
@@ -215,6 +222,9 @@ server <- function(input, output, session) {
       }
       HTML(paste0("<div style='color:grey;'>", status, "</div>"))
       })
+    
+    ## Download results ----
+    # set results file names once the script is done running
     observe({
       if(rv$done){
         rv$results_filepath <- paste0(str_subset(list.files(paste0(getwd()), recursive=T, full.names = T), "Results"))[1]
@@ -242,8 +252,8 @@ server <- function(input, output, session) {
       }
     })
   
-  
-  # Results tab ----
+
+  # Results tab ---------------------------------------------------------------
     
     # Reactive value defaults
     results_path <- reactiveVal(NULL)
@@ -262,7 +272,7 @@ server <- function(input, output, session) {
     read.csv(results_path(), header = TRUE)
   })
   
-  ### year_choices ----
+  ### year ----
   year_choices <- reactive({
     req(results())  # Ensure a file is uploaded
     years <- unique(results()$year)
@@ -273,7 +283,6 @@ server <- function(input, output, session) {
     c(min(year_choices()), max(year_choices()))
   })
   
-  ### selected_year ----
   selected_year <- reactiveVal()
   
   # update when it's changed in either tab
@@ -281,40 +290,43 @@ server <- function(input, output, session) {
     selected_year(c(input$year[1], input$year[2]))
   })
   
-  ### EPU_choices ----
+  ### EPU ----
   EPU_choices <- reactive({
     req(results())  # Ensure a file is uploaded
     EPUs <- sort(unique(results()$EPU))
     c("All", EPUs)
   })
-  ### selected_EPU ----
+
   selected_EPU <- reactiveVal()
+  
   # update when it's changed in either tab
   observeEvent(input$EPU, {
     selected_EPU(input$EPU)
   })
   
-  ### selected_method ----
+  ### method ----
   selected_method <- reactiveVal("All")
+  
   # update when it's changed in either tab
   observeEvent(input$method, {
     selected_method(input$method)
   })
   
-  ### selected_target ----
+  ### target ----
   selected_target <- reactiveVal(FALSE)
+  
   # update when it's changed in either tab
   observeEvent(input$target, {
     selected_target(input$target)
   })
   
-  ### selected_trend ----
+  ### trend ----
   selected_trend <- reactiveVal(FALSE)
+  
   # update when it's changed in either tab
   observeEvent(input$trend, {
     selected_trend(input$trend)
   })
-  
   
   ### facet ----
   facet <- reactive({
@@ -337,7 +349,7 @@ server <- function(input, output, session) {
     }
   })
   
-  ### ci_data ----
+  ### CI ----
   selected_CI <- reactiveVal(c("1","2"))
   
   # update when it's changed in either tab
@@ -367,20 +379,25 @@ server <- function(input, output, session) {
   results_table <- reactive({
     req(results(), input$year, input$EPU)
     table_data <- results()
+    # only show the years selected
     table_data <- filter(table_data, table_data$year %in% seq(input$year[1], input$year[2]))
+    # only show the EPUs selected
     if (input$EPU != "All") {
       table_data <- filter(table_data, table_data$EPU == input$EPU)
     }
     table <- table_data %>%
+      # make it wide
       pivot_wider(
         id_cols = c(year, EPU, min_count, target),
         names_from = "method",
         values_from = "estimate"
       ) %>%
+      # add the rest of the columns back in
       inner_join(
         table_data %>% filter(!is.na(lcl_50)) %>% select(year, EPU, lcl_50, ucl_50, lcl_95, ucl_95, calf_cow, bull_cow, percent_branched),
         by = c("year", "EPU")
       ) %>%
+      # add exclamation when estimate < min_count
       mutate(
       exclamation = ifelse(Model < min_count, "!!", "")
     ) %>%
@@ -400,13 +417,15 @@ server <- function(input, output, session) {
         bull_cow,
         percent_branched
       )
+    # arrange it by most recent year, then alphabetically by EPU
     arrange(table, desc(year), EPU)
   })
-  
+  # Further adjustments
   display_table <- reactive({
     req(results_table())
     table <- results_table()
     table <- table %>%
+      # Calculate columns
       mutate(
         `50% confidence interval` = paste0(lcl_50, " to ", ucl_50),
         `95% confidence interval` = paste0(lcl_95, " to ", ucl_95),
@@ -414,6 +433,7 @@ server <- function(input, output, session) {
         `Bulls per 100 cows` = round(bull_cow, digits = 0),
         `Percent branch-antlered males` = round(percent_branched, digits=0)
       ) %>%
+      # make names intuitive
       select(
         Year = year,
         EPU,
@@ -432,6 +452,7 @@ server <- function(input, output, session) {
   })
   
   ## Plot ----
+  ### setup data ----
   results_plot <- reactive({
     req(results(),
         input$year,
@@ -457,18 +478,21 @@ server <- function(input, output, session) {
       selected_trend(FALSE)
     }
     x_data <- plot_data[[x_var]]
+    
     ### create plot ----
     p <- ggplot(plot_data, aes(x = x, y = estimate, fill = method)) +
+      # color points by method always
       labs(fill = "Method") +
       # name y axis
       scale_y_continuous("Estimated Abundance", limits = c(0,NA)) +
-      # use greyscale for point fill & color
+      # use greyscale for point fill & color (grey is better than white)
       scale_fill_grey(start = 0, end = 0.7) +
       scale_color_grey(start = 0, end = 0.7) +
       # facet wrap
       facet_wrap(as.formula(paste("~", facet())), scales = "free", ncol =
                    3)
     
+    ### axis settings ----
     if (x_var_data() == "year") {
       # make sure there's only one label per year
       p <- p +
@@ -511,6 +535,7 @@ server <- function(input, output, session) {
           strip.text = element_text(size = 14)
         )
     }
+    
     ### plot CIs ----
     if (!is.null(ci_data()$ucl) & !is.null(input$CI)) {
       if (x_var_data() == "EPU") {
@@ -692,6 +717,7 @@ server <- function(input, output, session) {
           labs(linetype = "",
                color = "")}
       }
+    ### final elements ----
     
     p <- p  +
       # Add theme elements
