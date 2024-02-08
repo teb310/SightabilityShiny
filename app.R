@@ -47,60 +47,64 @@ ui <- fluidPage(
                  br(),
                  h3("Welcome!"),
                  br(),
-                 p("This app is designed to make statistical modelling of elk survey data quick and easy.
+                 p(
+                   "This app is designed to make statistical modelling of elk survey data quick and easy.
             First, format your survey data using the template."
                  ),
                  br(),
-                 downloadButton("download_template", "Download Template")),
-               mainPanel(
-                 div(
-                   id = "plot-container",
-                   img(src = "elk_galore.JPG",
-                       style = "width: 100%; height: 100%; display: block; margin-left: auto; margin-right: auto;")
-               )))),
-    tabPanel("Model",
-             tags$head(tags$style(
-               HTML("
+                 downloadButton("download_template", "Download Template")
+               ),
+               mainPanel(div(
+                 id = "plot-container",
+                 img(src = "elk_galore.JPG",
+                     style = "width: 100%; height: 100%; display: block; margin-left: auto; margin-right: auto;")
+               ))
+             )),
+    tabPanel(
+      "Model",
+      tags$head(tags$style(
+        HTML("
       #download_results {
         visibility: hidden;
       }
     ")
-             )),
-             sidebarLayout(
-               sidebarPanel(
-                 br(),
-                 fileInput("data_file", "Upload Excel File", accept = ".xlsx"),
-                 actionButton("run_script", "Run Script"),
-                 br(),
-                 br(),
-                 htmlOutput("script_status"),
-                 downloadButton("download_results")
-               ),
-               mainPanel(
-                 br(),
-                 h3("Run the model"),
-                 br(),
-                 p(
-                   "Now that your data is formatted, upload your Excel datasheet 
-                   on the left. After pressing 'Run model', progress updates will 
-                   be loaded to this screen. The model may take over an hour to run. 
-                   Once the model is finished running, the results 
-                   file will automatically download as a CSV. Load the file in the 
+      )),
+      sidebarLayout(
+        sidebarPanel(
+          br(),
+          fileInput("data_file", "Upload Excel File", accept = ".xlsx"),
+          actionButton("run_script", "Run Script"),
+          br(),
+          br(),
+          htmlOutput("script_status"),
+          downloadButton("download_results")
+        ),
+        mainPanel(
+          br(),
+          h3("Run the model"),
+          br(),
+          p(
+            "Now that your data is formatted, upload your Excel datasheet
+                   on the left. After pressing 'Run model', progress updates will
+                   be loaded to this screen. The model may take over an hour to run.
+                   Once the model is finished running, the results
+                   file will automatically download as a CSV. Load the file in the
                    Results tab to view your modelled elk abundance estimates."
-                 ), 
-                 htmlOutput("model_progress"),
-                 br(),
-                 htmlOutput("model_error"),
-                 verbatimTextOutput("clock_output"),
-                 tags$style(
-                   HTML("#clock_output {
+          ),
+          htmlOutput("model_progress"),
+          br(),
+          htmlOutput("model_error"),
+          verbatimTextOutput("clock_output"),
+          tags$style(
+            HTML("#clock_output {
                        position: absolute;
                        bottom: 10px;
                        left: 10px;
                        }")
-                )
-               )
-             )),
+          )
+        )
+      )
+    ),
     tabPanel("Results",
              sidebarLayout(
                sidebarPanel(uiOutput("sidebarText")),
@@ -122,7 +126,6 @@ ui <- fluidPage(
 
 # Define server logic ---------------------------------------------------------
 server <- function(input, output, session) {
-  
   # Welcome tab ---------------------------------------------------------------
   
   # Download template
@@ -137,129 +140,144 @@ server <- function(input, output, session) {
   
   # Model tab -----------------------------------------------------------------
   
-    ## Clock ------
-    # clock to prevent timing out
-    clock <- reactive({
-      invalidateLater(1000)
-      format(Sys.time(), "%H:%M:%S %Z")
-    })
-    output$clock_output <- renderText(clock())
-    
-    ## Reset txt files ----
-    writeLines("FALSE", "running.txt")
+  ## Clock ------
+  # clock to prevent timing out
+  clock <- reactive({
+    invalidateLater(1000)
+    format(Sys.time(), "%H:%M:%S %Z")
+  })
+  output$clock_output <- renderText(clock())
+  
+  ## Reset txt files ----
+  writeLines("FALSE", "running.txt")
+  writeLines("FALSE", "done.txt")
+  writeLines("", "progress.txt")
+  writeLines("", "error.txt")
+  
+  ## RVs ------
+  # default values
+  rv <- reactiveValues(
+    textstream = c(""),
+    errorstream = c(""),
+    running = FALSE,
+    done = FALSE,
+    error = FALSE,
+    results_filename = NULL,
+    results_filepath = NULL,
+    results_file = NULL
+  )
+  file_path <- reactiveVal(NULL)
+  
+  # continuously evaluate
+  observe({
+    clock()
+    rv$running <- paste(readLines("running.txt", warn = F))
+    if (isolate(rv$running)) {
+      rv$textstream <-
+        paste(readLines("progress.txt"), collapse = "<br/>")
+      rv$errorstream <-
+        paste(readLines("error.txt"), collapse = "<br/>")
+    }
+    if (rv$errorstream != "") {
+      rv$error <- TRUE
+      rv$running <- FALSE
+    }
+    rv$done <- paste(readLines("done.txt", warn = F))
+  })
+  
+  
+  ## File upload ----
+  # Set the path of the uploaded Excel file
+  observeEvent(input$data_file, {
+    file_path(input$data_file$datapath)
+    # reset rvs
     writeLines("FALSE", "done.txt")
-    writeLines("", "progress.txt")
-    writeLines("", "error.txt")   
-    
-    ## RVs ------
-    # default values
-    rv <- reactiveValues(textstream = c(""),
-                         errorstream = c(""),
-                         running = FALSE,
-                         done = FALSE,
-                         error = FALSE,
-                         results_filename = NULL,
-                         results_filepath = NULL,
-                         results_file = NULL)
-    file_path <- reactiveVal(NULL)
-
-    # continuously evaluate
-    observe({
-      clock()
-      rv$running <- paste(readLines("running.txt", warn = F))
-      if(isolate(rv$running)){
-        rv$textstream <- paste(readLines("progress.txt"), collapse = "<br/>")
-        rv$errorstream <- paste(readLines("error.txt"), collapse = "<br/>")
-      }
-      if(rv$errorstream!=""){
-        rv$error <- TRUE
-        rv$running <- FALSE
-      }
-      rv$done <- paste(readLines("done.txt", warn = F))
-    })
-
+    rv$textstream <- ""
+    rv$errorstream <- ""
+  })
+  # Show the run model button only if a file is uploaded
+  observe({
+    shinyjs::hide("run_script")
+    if (!is.null(file_path())) {
+      shinyjs::show("run_script")
+    }
+  })
   
-    ## File upload ----
-    # Set the path of the uploaded Excel file
-    observeEvent(input$data_file, {
-      file_path(input$data_file$datapath)
-      # reset rvs
-      writeLines("FALSE", "done.txt")    
-      rv$textstream <- ""
-      rv$errorstream <- ""
-    })  
-    # Show the run model button only if a file is uploaded
-    observe({
-      shinyjs::hide("run_script")
-      if(!is.null(file_path())){
-        shinyjs::show("run_script")
-      }
-    })
-    
-    ## Run model ----
-    # Run the R script on the uploaded file
-    observeEvent(input$run_script, {
-        system2("Rscript", args = c("model_stratified.R", file_path()), wait=F)
-    })
-    # Show console outputs
-    output$model_progress <- renderUI({
-      HTML(paste0("<div style='color: #00AA10;'>", rv$textstream, "</div>"))
-    })
-    output$model_error <- renderUI({
-      HTML(paste0("<div style='color: #FF0000;'>", rv$errorstream, "</div>"))
-    })
-    
-    # Show script status
-    output$script_status <- renderUI({
-      if(rv$running) {
-        status <- "Script running..."
-      } else if (rv$error) {
-        status <- "Error"
-      } else if (rv$done) {
-        status <- "Script finished running!"
-      } else {
+  ## Run model ----
+  # Run the R script on the uploaded file
+  observeEvent(input$run_script, {
+    system2("Rscript",
+            args = c("model_stratified.R", file_path()),
+            wait = F)
+  })
+  # Show console outputs
+  output$model_progress <- renderUI({
+    HTML(paste0("<div style='color: #00AA10;'>", rv$textstream, "</div>"))
+  })
+  output$model_error <- renderUI({
+    HTML(paste0("<div style='color: #FF0000;'>", rv$errorstream, "</div>"))
+  })
+  
+  # Show script status
+  output$script_status <- renderUI({
+    if (rv$running) {
+      status <- "Script running..."
+    } else if (rv$error) {
+      status <- "Error"
+    } else if (rv$done) {
+      status <- "Script finished running!"
+    } else {
       status <- ""
-      }
-      HTML(paste0("<div style='color:grey;'>", status, "</div>"))
-      })
-    
-    ## Download results ----
-    # set results file names once the script is done running
-    observe({
-      if(rv$done){
-        rv$results_filepath <- paste0(str_subset(list.files(paste0(getwd()), recursive=T, full.names = T), "Results"))[1]
-        rv$results_filename <- str_extract(rv$results_filepath, "(?<=output/).+")
-        rv$results_file <- read_csv(rv$results_filepath)
-      }
-    })
-    
-    # downloadHandler
-    output$download_results <- downloadHandler(
-      filename = function() {
-        # Set the filename for the downloaded file
-        paste0(rv$results_filename)
-      },
-      content = function(file) {
-        # Prepare the data for download (use the data from reactiveValues)
-        write.csv(rv$results_file, file, row.names = F)
-      }
-    )
-    
-    # press download once the results file is ready
-    observe({
-      if(!is.null(rv$results_file)) {
-        runjs("$('#download_results')[0].click();")
-      }
-    })
+    }
+    HTML(paste0("<div style='color:grey;'>", status, "</div>"))
+  })
   
-
+  ## Download results ----
+  # set results file names once the script is done running
+  observe({
+    if (rv$done) {
+      rv$results_filepath <-
+        paste0(str_subset(
+          list.files(
+            paste0(getwd()),
+            recursive = T,
+            full.names = T
+          ),
+          "Results"
+        ))[1]
+      rv$results_filename <-
+        str_extract(rv$results_filepath, "(?<=output/).+")
+      rv$results_file <- read_csv(rv$results_filepath)
+    }
+  })
+  
+  # downloadHandler
+  output$download_results <- downloadHandler(
+    filename = function() {
+      # Set the filename for the downloaded file
+      paste0(rv$results_filename)
+    },
+    content = function(file) {
+      # Prepare the data for download (use the data from reactiveValues)
+      write.csv(rv$results_file, file, row.names = F)
+    }
+  )
+  
+  # press download once the results file is ready
+  observe({
+    if (!is.null(rv$results_file)) {
+      runjs("$('#download_results')[0].click();")
+    }
+  })
+  
+  
   # Results tab ---------------------------------------------------------------
-    
-    # Reactive value defaults
-    results_path <- reactiveVal(NULL)
-    results_reactive <- reactiveValues(data = NULL)
-    legend_values <- reactiveValues()
-    
+  
+  # Reactive value defaults
+  results_path <- reactiveVal(NULL)
+  results_reactive <- reactiveValues(data = NULL)
+  legend_values <- reactiveValues()
+  
   ## Building blocks ----
   # Get results filepath from results_file
   observeEvent(input$results_file, {
@@ -296,7 +314,7 @@ server <- function(input, output, session) {
     EPUs <- sort(unique(results()$EPU))
     c("All", EPUs)
   })
-
+  
   selected_EPU <- reactiveVal()
   
   # update when it's changed in either tab
@@ -342,7 +360,7 @@ server <- function(input, output, session) {
   ### x_var_data ----
   x_var_data <- reactive({
     req(input$year)
-    if (input$year[1]==input$year[2]) {
+    if (input$year[1] == input$year[2]) {
       "EPU"
     } else {
       "year"
@@ -350,7 +368,7 @@ server <- function(input, output, session) {
   })
   
   ### CI ----
-  selected_CI <- reactiveVal(c("1","2"))
+  selected_CI <- reactiveVal(c("1", "2"))
   
   # update when it's changed in either tab
   observeEvent(input$CI, {
@@ -380,7 +398,9 @@ server <- function(input, output, session) {
     req(results(), input$year, input$EPU)
     table_data <- results()
     # only show the years selected
-    table_data <- filter(table_data, table_data$year %in% seq(input$year[1], input$year[2]))
+    table_data <-
+      filter(table_data,
+             table_data$year %in% seq(input$year[1], input$year[2]))
     # only show the EPUs selected
     if (input$EPU != "All") {
       table_data <- filter(table_data, table_data$EPU == input$EPU)
@@ -394,13 +414,21 @@ server <- function(input, output, session) {
       ) %>%
       # add the rest of the columns back in
       inner_join(
-        table_data %>% filter(!is.na(lcl_50)) %>% select(year, EPU, lcl_50, ucl_50, lcl_95, ucl_95, calf_cow, bull_cow, percent_branched),
+        table_data %>% filter(!is.na(lcl_50)) %>% select(
+          year,
+          EPU,
+          lcl_50,
+          ucl_50,
+          lcl_95,
+          ucl_95,
+          calf_cow,
+          bull_cow,
+          percent_branched
+        ),
         by = c("year", "EPU")
       ) %>%
       # add exclamation when estimate < min_count
-      mutate(
-      exclamation = ifelse(Model < min_count, "!!", "")
-    ) %>%
+      mutate(exclamation = ifelse(Model < min_count, "!!", "")) %>%
       select(
         year,
         EPU,
@@ -431,7 +459,8 @@ server <- function(input, output, session) {
         `95% confidence interval` = paste0(lcl_95, " to ", ucl_95),
         `Calves per 100 cows` = round(calf_cow, digits = 0),
         `Bulls per 100 cows` = round(bull_cow, digits = 0),
-        `Percent branch-antlered males` = round(percent_branched, digits=0)
+        `Percent branch-antlered males` = round(percent_branched, digits =
+                                                  0)
       ) %>%
       # make names intuitive
       select(
@@ -466,25 +495,28 @@ server <- function(input, output, session) {
     plot_data <- results()
     plot_data$x <- plot_data[[x_var]]
     if (any(input$year != year_span())) {
-      plot_data <- filter(plot_data, plot_data$year %in% seq(input$year[1], input$year[2]))
+      plot_data <-
+        filter(plot_data,
+               plot_data$year %in% seq(input$year[1], input$year[2]))
     }
     if (input$EPU != "All") {
       plot_data <- filter(plot_data, plot_data$EPU == input$EPU)
     }
-    if(input$method != "All") {
-        plot_data <- filter(plot_data, plot_data$method == input$method)
+    if (input$method != "All") {
+      plot_data <- filter(plot_data, plot_data$method == input$method)
     }
-    if(x_var == "EPU") {
+    if (x_var == "EPU") {
       selected_trend(FALSE)
     }
     x_data <- plot_data[[x_var]]
     
     ### create plot ----
-    p <- ggplot(plot_data, aes(x = x, y = estimate, fill = method)) +
+    p <-
+      ggplot(plot_data, aes(x = x, y = estimate, fill = method)) +
       # color points by method always
       labs(fill = "Method") +
       # name y axis
-      scale_y_continuous("Estimated Abundance", limits = c(0,NA)) +
+      scale_y_continuous("Estimated Abundance", limits = c(0, NA)) +
       # use greyscale for point fill & color (grey is better than white)
       scale_fill_grey(start = 0, end = 0.7) +
       scale_color_grey(start = 0, end = 0.7) +
@@ -539,101 +571,155 @@ server <- function(input, output, session) {
     ### plot CIs ----
     if (!is.null(ci_data()$ucl) & !is.null(input$CI)) {
       if (x_var_data() == "EPU") {
-          if(1 %in% input$CI) {
-            p <- p +
-          # 95% (dashed)
-          geom_linerange(
-            aes(x, ymin = lcl_95, ymax = ucl_95, linetype = "95% CI"),
-            linewidth = 1,
-            position = position_dodge(width = 0.3)
-          )
-          }
-          if(2 %in% input$CI) {
-            p <- p +
-          # 50% (solid)
-          geom_linerange(
-            aes(x, ymin = lcl_50, ymax = ucl_50, linetype = "50% CI"),
-            linewidth = 1,
-            position = position_dodge(width = 0.3)
-          )
-          }
-        } else {
-        if(input$target == T) {
-          if(1 %in% input$CI) {
-          p <- p +
-          # 95% (dashed)
-          geom_linerange(
-            aes(x, ymin = lcl_95, ymax = ucl_95, linetype = "95% CI", color = "95% CI"),
-            linewidth = 1,
-            show.legend = F,
-            position = position_dodge(width = 0.3)
-          )}
-        if(2 %in% input$CI) {
-          p <- p +
-          # 50% (solid)
-          geom_linerange(
-            aes(x, ymin = lcl_50, ymax = ucl_50, linetype = "50% CI", color = "50% CI"),
-            linewidth = 1,
-            show.legend = F,
-            position = position_dodge(width = 0.3)
-          )}
-        } else if (selected_trend()==T) {
-          if(1 %in% input$CI) {
-            p <- p +
-              # 95% (dashed)
-              geom_linerange(
-                aes(x, ymin = lcl_95, ymax = ucl_95, linetype = "95% CI", color = "95% CI"),
-                linewidth = 1,
-                position = position_dodge(width = 0.3)
-              )}
-          if(2 %in% input$CI) {
-            p <- p +
-              # 50% (solid)
-              geom_linerange(
-                aes(x, ymin = lcl_50, ymax = ucl_50, linetype = "50% CI", color = "50% CI"),
-                linewidth = 1,
-                position = position_dodge(width = 0.3)
-              )}
-        } else {
-          if (1 %in% input$CI) {
+        if (1 %in% input$CI) {
           p <- p +
             # 95% (dashed)
             geom_linerange(
-              aes(x, ymin = lcl_95, ymax = ucl_95, linetype = "95% CI"),
+              aes(
+                x,
+                ymin = lcl_95,
+                ymax = ucl_95,
+                linetype = "95% CI"
+              ),
               linewidth = 1,
               position = position_dodge(width = 0.3)
-            )}
-        if(2 %in% input$CI) {
+            )
+        }
+        if (2 %in% input$CI) {
           p <- p +
             # 50% (solid)
             geom_linerange(
-              aes(x, ymin = lcl_50, ymax = ucl_50, linetype = "50% CI"),
+              aes(
+                x,
+                ymin = lcl_50,
+                ymax = ucl_50,
+                linetype = "50% CI"
+              ),
               linewidth = 1,
-              position = position_dodge(width = 0.3))
+              position = position_dodge(width = 0.3)
+            )
+        }
+      } else {
+        if (input$target == T) {
+          if (1 %in% input$CI) {
+            p <- p +
+              # 95% (dashed)
+              geom_linerange(
+                aes(
+                  x,
+                  ymin = lcl_95,
+                  ymax = ucl_95,
+                  linetype = "95% CI",
+                  color = "95% CI"
+                ),
+                linewidth = 1,
+                show.legend = F,
+                position = position_dodge(width = 0.3)
+              )
+          }
+          if (2 %in% input$CI) {
+            p <- p +
+              # 50% (solid)
+              geom_linerange(
+                aes(
+                  x,
+                  ymin = lcl_50,
+                  ymax = ucl_50,
+                  linetype = "50% CI",
+                  color = "50% CI"
+                ),
+                linewidth = 1,
+                show.legend = F,
+                position = position_dodge(width = 0.3)
+              )
+          }
+        } else if (selected_trend() == T) {
+          if (1 %in% input$CI) {
+            p <- p +
+              # 95% (dashed)
+              geom_linerange(
+                aes(
+                  x,
+                  ymin = lcl_95,
+                  ymax = ucl_95,
+                  linetype = "95% CI",
+                  color = "95% CI"
+                ),
+                linewidth = 1,
+                position = position_dodge(width = 0.3)
+              )
+          }
+          if (2 %in% input$CI) {
+            p <- p +
+              # 50% (solid)
+              geom_linerange(
+                aes(
+                  x,
+                  ymin = lcl_50,
+                  ymax = ucl_50,
+                  linetype = "50% CI",
+                  color = "50% CI"
+                ),
+                linewidth = 1,
+                position = position_dodge(width = 0.3)
+              )
+          }
+        } else {
+          if (1 %in% input$CI) {
+            p <- p +
+              # 95% (dashed)
+              geom_linerange(
+                aes(
+                  x,
+                  ymin = lcl_95,
+                  ymax = ucl_95,
+                  linetype = "95% CI"
+                ),
+                linewidth = 1,
+                position = position_dodge(width = 0.3)
+              )
+          }
+          if (2 %in% input$CI) {
+            p <- p +
+              # 50% (solid)
+              geom_linerange(
+                aes(
+                  x,
+                  ymin = lcl_50,
+                  ymax = ucl_50,
+                  linetype = "50% CI"
+                ),
+                linewidth = 1,
+                position = position_dodge(width = 0.3)
+              )
+          }
         }
       }
-        }
     }
     
     ### plot target ----
-     if (input$target == T) {
+    if (input$target == T) {
       if (x_var_data() == "year") {
         # Add a horizontal dotted line at the target population value
         p <- p +
-          geom_hline(
-            aes(yintercept = target, linetype = "Target", color = "Target"),
-            linewidth = 1
-          )
+          geom_hline(aes(
+            yintercept = target,
+            linetype = "Target",
+            color = "Target"
+          ),
+          linewidth = 1)
       } else {
         p <- p +
           # target point
-          geom_point(
-            aes(x = x, y = target, color = "Target"),
-            size = 2,
-            shape = 8
-          )
-        }
+          geom_point(aes(
+            x = x,
+            y = target,
+            color = "Target"
+          ),
+          size = 2,
+          shape = 8)
       }
+    }
     ### plot trend ----
     if (x_var_data() == "year" & !is.null(input$trend)) {
       if (input$trend == T) {
@@ -687,36 +773,37 @@ server <- function(input, output, session) {
           )
         ) +
         labs(linetype = "",
-             color = "") 
+             color = "")
+    } else {
+      if (input$target == F) {
+        p <- p +
+          # add scaling info for legend items
+          scale_linetype_manual(legend_values = c("95% CI" = 3,
+                                                  "50% CI" = 1)) +
+          labs(linetype = "")
+      } else if (x_var_data() == "EPU") {
+        p <- p +
+          scale_linetype_manual(legend_values = c("95% CI" = 3,
+                                                  "50% CI" = 1)) +
+          scale_color_manual(legend_values = c("Target" = "red")) +
+          labs(linetype = "",
+               color = "")
       } else {
-        if(input$target == F) {
-          p <- p +
-            # add scaling info for legend items
-            scale_linetype_manual(legend_values = c(
-              "95% CI" = 3,
-              "50% CI" = 1
-            )) +
-            labs(linetype = "")
-        } else if(x_var_data()=="EPU") {
-          p <- p +
-            scale_linetype_manual(legend_values = c(
-            "95% CI" = 3,
-            "50% CI" = 1
-          )) +
-            scale_color_manual(legend_values = c("Target" = "red")) +
-            labs(linetype = "",
-                 color = "")
-        } else {
-          p <- p +
+        p <- p +
           scale_linetype_manual(legend_values = c(
             "95% CI" = 3,
             "50% CI" = 1,
             "Target" = 2
           )) +
-          scale_color_manual(legend_values = c("95% CI" = "black", "50% CI" = "black", "Target" = "red")) +
+          scale_color_manual(legend_values = c(
+            "95% CI" = "black",
+            "50% CI" = "black",
+            "Target" = "red"
+          )) +
           labs(linetype = "",
-               color = "")}
+               color = "")
       }
+    }
     ### final elements ----
     
     p <- p  +
@@ -730,7 +817,8 @@ server <- function(input, output, session) {
         axis.title.y = element_text(size = 16),
         legend.key.size = unit(0.75, 'in'),
         legend.text = element_text(size = 12),
-        legend.title = element_text(size = 14)) 
+        legend.title = element_text(size = 14)
+      )
     
     p
   })
@@ -743,23 +831,26 @@ server <- function(input, output, session) {
       label = strong("Year"),
       min = min(year_choices()),
       max = max(year_choices()),
-      value = if(is.null(selected_year())) {
+      value = if (is.null(selected_year())) {
         c(min(year_choices()), max(year_choices()))
-        } else {
-          selected_year()
-        },
-      step = 1, 
+      } else {
+        selected_year()
+      },
+      step = 1,
       sep = ""
     )
   })
   
   observe({
-    updateSliderInput(session, "year",
-                      min = min(year_choices()),
-                      max = max(year_choices()),
-                      value = selected_year())
+    updateSliderInput(
+      session,
+      "year",
+      min = min(year_choices()),
+      max = max(year_choices()),
+      value = selected_year()
+    )
   })
-
+  
   ### EPU_select ----
   output$EPU_select <- renderUI({
     selectInput(
@@ -808,7 +899,7 @@ server <- function(input, output, session) {
   ### other_options ----
   output$other_options <- renderUI({
     req(results())
-    if (input$year[1]!=input$year[2]) {
+    if (input$year[1] != input$year[2]) {
       tagList(
         strong("Other Options"),
         checkboxInput("target", "Target population", value = selected_target()),
@@ -826,12 +917,12 @@ server <- function(input, output, session) {
   output$export_table <- downloadHandler(
     filename = function() {
       paste(input$year[1], "to", input$year[2],
-      if (input$EPU == "All") {
-        "AllEPUs"
-      } else {
-        input$EPU
-      },
-      ".csv", sep = "_")
+            if (input$EPU == "All") {
+              "AllEPUs"
+            } else {
+              input$EPU
+            },
+            ".csv", sep = "_")
     },
     content = function(file) {
       write.csv(results_table(), file, row.names = FALSE)
@@ -855,36 +946,40 @@ server <- function(input, output, session) {
   
   output$export_plot <- downloadHandler(
     filename = function() {
-      paste(input$year[1], "to", input$year[2],
-      if (input$EPU == "All") {
-        "AllEPUs"
-      } else {
-        str_remove_all(input$EPU, "[ -]")
-      },
-      if (input$method == "All") {
-        "AllMethods"
-      } else {
-        input$method
-      },
-      if (!is.null(input$CI)) {
-        if (all(c(1, 2) %in% input$CI)) {
-          "AllCI"
-        } else if (1 %in% input$CI) {
-          "95CI"
-        } else if (2 %in% input$CI) {
-          "50CI"
-        }
-      },
-      if (input$target == T) {
-        "withTarget"
-      },
-      if (input$year[1] != input$year[2] & !is.null(input$trend)) {
-        if (input$trend == T) {
-          "withTrend"
-        }
-      },
-      ".png",
-      sep = "_")
+      paste(
+        input$year[1],
+        "to",
+        input$year[2],
+        if (input$EPU == "All") {
+          "AllEPUs"
+        } else {
+          str_remove_all(input$EPU, "[ -]")
+        },
+        if (input$method == "All") {
+          "AllMethods"
+        } else {
+          input$method
+        },
+        if (!is.null(input$CI)) {
+          if (all(c(1, 2) %in% input$CI)) {
+            "AllCI"
+          } else if (1 %in% input$CI) {
+            "95CI"
+          } else if (2 %in% input$CI) {
+            "50CI"
+          }
+        },
+        if (input$target == T) {
+          "withTarget"
+        },
+        if (input$year[1] != input$year[2] & !is.null(input$trend)) {
+          if (input$trend == T) {
+            "withTrend"
+          }
+        },
+        ".png",
+        sep = "_"
+      )
     },
     content = function(file) {
       ggsave(
@@ -945,10 +1040,8 @@ server <- function(input, output, session) {
     if (!is.null(results_path())) {
       dataTableOutput("table", width = "100%", height = "100%")
     } else {
-      tagList(
-        br(),
-        textOutput("no_file")
-      )
+      tagList(br(),
+              textOutput("no_file"))
     }
   })
   
@@ -973,10 +1066,8 @@ server <- function(input, output, session) {
       req(plot_height())
       plotOutput("plot", width = "100%", height = plot_height())
     } else {
-      tagList(
-        br(),
-        textOutput("no_file")
-      )
+      tagList(br(),
+              textOutput("no_file"))
     }
   })
 }
