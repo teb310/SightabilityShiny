@@ -31,6 +31,9 @@ dir.create(paste0(wd, "/input"))
 dir.create(paste0(wd, "/output"))
 
 # Define UI ----
+# set tz (computer automatically does UTM)
+Sys.setenv(TZ = "America/Los_Angeles")
+
 ui <- fluidPage(
   bootstrapLib(bs_theme(bootswatch = "spacelab")),
   useShinyjs(),
@@ -119,13 +122,6 @@ ui <- fluidPage(
 # Define server logic ----
 server <- function(input, output, session) {
   
-  # Reactive value defaults
-  file_path <- reactiveVal(NULL)
-  results_path <- reactiveVal(NULL)
-  script_finished <- reactiveVal(FALSE)
-  results_reactive <- reactiveValues(data = NULL)
-  timer <- reactiveTimer(1000)
-  
   # Welcome tab ----
   
   # Download template
@@ -140,17 +136,13 @@ server <- function(input, output, session) {
   
   # Model tab ----
   
-  # clock to prevent timing out
-  clock <- reactive({
-    invalidateLater(1000)
-    format(Sys.time(), "%H:%M:%S")
-  })
-  
-  output$clock_output <- renderText(clock())
-  
-  observe({
-    timer()
-    output$clock_output <- renderText({
+    # clock to prevent timing out
+    clock <- reactive({
+      invalidateLater(1000)
+      format(Sys.time(), "%H:%M:%S %Z")
+    })
+    output$clock_output <- renderText(clock())
+    
     ## Reset txt files ----
     writeLines("FALSE", "running.txt")
     writeLines("FALSE", "done.txt")
@@ -167,7 +159,10 @@ server <- function(input, output, session) {
                          results_filename = NULL,
                          results_filepath = NULL,
                          results_file = NULL)
-    
+    file_path <- reactiveVal(NULL)
+
+    # continuously evaluate
+    observe({
       clock()
       rv$running <- paste(readLines("running.txt", warn = F))
       if(isolate(rv$running)){
@@ -180,15 +175,7 @@ server <- function(input, output, session) {
       }
       rv$done <- paste(readLines("done.txt", warn = F))
     })
-  })
-  
-  # Show the run model button only if a file is uploaded
-  observe({
-    shinyjs::hide("run_script")
-    if(!is.null(file_path())){
-      shinyjs::show("run_script")
-    }
-  })
+
   
     ## File upload ----
     # Set the path of the uploaded Excel file
@@ -199,6 +186,12 @@ server <- function(input, output, session) {
       rv$textstream <- ""
       rv$errorstream <- ""
     })  
+    # Show the run model button only if a file is uploaded
+    observe({
+      shinyjs::hide("run_script")
+      if(!is.null(file_path())){
+        shinyjs::show("run_script")
+      }
     })
     observeEvent(input$run_script, {
         system2("Rscript", args = c("model_stratified.R", file_path()), wait=F)
@@ -251,6 +244,12 @@ server <- function(input, output, session) {
   
   
   # Results tab ----
+    
+    # Reactive value defaults
+    results_path <- reactiveVal(NULL)
+    results_reactive <- reactiveValues(data = NULL)
+    legend_values <- reactiveValues()
+    
   ## Building blocks ----
   # Get results filepath from results_file
   observeEvent(input$results_file, {
@@ -302,13 +301,6 @@ server <- function(input, output, session) {
     selected_method(input$method)
   })
   
-  ### selected_CI ----
-  selected_CI <- reactiveVal(c("1","2"))
-  # update when it's changed in either tab
-  observeEvent(input$CI, {
-    selected_CI(input$CI)
-  })
-  
   ### selected_target ----
   selected_target <- reactiveVal(FALSE)
   # update when it's changed in either tab
@@ -346,6 +338,13 @@ server <- function(input, output, session) {
   })
   
   ### ci_data ----
+  selected_CI <- reactiveVal(c("1","2"))
+  
+  # update when it's changed in either tab
+  observeEvent(input$CI, {
+    selected_CI(input$CI)
+  })
+  
   ci_data <- reactive({
     if (1 %in% input$CI & 2 %in% input$CI) {
       list(
@@ -646,7 +645,7 @@ server <- function(input, output, session) {
     if (selected_trend() == T) {
       p <- p +
         # add scaling info for legend items
-        scale_linetype_manual(values = c(
+        scale_linetype_manual(legend_values = c(
           "Model" = 1,
           "Standard" = 1,
           "Target" = 2,
@@ -654,7 +653,7 @@ server <- function(input, output, session) {
           "50% CI" = 1
         )) +
         scale_color_manual (
-          values = c(
+          legend_values = c(
             "Model" = "black",
             "Standard" = "grey",
             "Target" = "red",
@@ -668,28 +667,28 @@ server <- function(input, output, session) {
         if(input$target == F) {
           p <- p +
             # add scaling info for legend items
-            scale_linetype_manual(values = c(
+            scale_linetype_manual(legend_values = c(
               "95% CI" = 3,
               "50% CI" = 1
             )) +
             labs(linetype = "")
         } else if(x_var_data()=="EPU") {
           p <- p +
-            scale_linetype_manual(values = c(
+            scale_linetype_manual(legend_values = c(
             "95% CI" = 3,
             "50% CI" = 1
           )) +
-            scale_color_manual(values = c("Target" = "red")) +
+            scale_color_manual(legend_values = c("Target" = "red")) +
             labs(linetype = "",
                  color = "")
         } else {
           p <- p +
-          scale_linetype_manual(values = c(
+          scale_linetype_manual(legend_values = c(
             "95% CI" = 3,
             "50% CI" = 1,
             "Target" = 2
           )) +
-          scale_color_manual(values = c("95% CI" = "black", "50% CI" = "black", "Target" = "red")) +
+          scale_color_manual(legend_values = c("95% CI" = "black", "50% CI" = "black", "Target" = "red")) +
           labs(linetype = "",
                color = "")}
       }
@@ -958,17 +957,3 @@ server <- function(input, output, session) {
 
 # Run the app ----
 shinyApp(ui = ui, server = server)
-
-# examples
-
-# runExample("01_hello")      # a histogram
-# runExample("02_text")       # tables and data frames
-# runExample("03_reactivity") # a reactive expression
-# runExample("04_mpg")        # global variables
-# runExample("05_sliders")    # slider bars
-# runExample("06_tabsets")    # tabbed panels
-# runExample("07_widgets")    # help text and submit buttons
-# runExample("08_html")       # Shiny app built from HTML
-# runExample("09_upload")     # file upload wizard
-# runExample("10_download")   # file download wizard
-# runExample("11_timer")      # an automated timer

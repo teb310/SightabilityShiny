@@ -220,17 +220,16 @@ sight <- obs.all %>%
   )
 
 # duplicate observations with >1 collars
-sight.dup <- as.data.frame(matrix(NA, 0, ncol(sight)))
-colnames(sight.dup) <- colnames(sight)
+sight.dup <- head(sight, 0)
 
-for(i in 1:nrow(sight))
-{
+for(i in seq_along(sight$collars)){
   if(sight$collars[i]>1){
     sight.dup <- rbind(sight.dup, rep(sight[i,], sight$collars[i]-1))
-    sight.dup$date <- as.Date(sight.dup$date)
   }
 }
+if(nrow(sight.dup)>0){
 sight <- bind_rows(sight, sight.dup)
+}
 
 ## 1.6 OBSERVATIONAL DATASET ####
 
