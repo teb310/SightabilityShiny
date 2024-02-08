@@ -21,9 +21,6 @@ library("xtable")
 library("statip")
 library("R2jags")
 
-# run functions
-source("helpers_stratified.R")
-
 # Set your working directory paths and survey data file path
 wd <- getwd()
 input_wd <- paste0(wd, "/input")
@@ -58,26 +55,41 @@ ui <- fluidPage(
                        style = "width: 100%; height: 100%; display: block; margin-left: auto; margin-right: auto;")
                )))),
     tabPanel("Model",
+             tags$head(tags$style(
+               HTML("
+      #download_results {
+        visibility: hidden;
+      }
+    ")
+             )),
              sidebarLayout(
                sidebarPanel(
                  br(),
                  fileInput("data_file", "Upload Excel File", accept = ".xlsx"),
                  actionButton("run_script", "Run Script"),
                  br(),
-                 textOutput("script_status"),
-                 # hidden button that tells R to download the results after running script
-                 downloadButton("download_results", "Download Results")
+                 br(),
+                 htmlOutput("script_status"),
+                 downloadButton("download_results")
                ),
                mainPanel(
                  br(),
                  h3("Run the model"),
                  br(),
-                p("Now that your data is formatted, upload your Excel datasheet on the left. Once the model is finished running, you will
-            see a download button. Click the button to export your results file. Load the
-            file in the Results tab to view your modelled elk abundance estimates."),
-                verbatimTextOutput("clock_output"),
-                tags$style(
-                  HTML("#clock_output {
+                 p(
+                   "Now that your data is formatted, upload your Excel datasheet 
+                   on the left. After pressing 'Run model', progress updates will 
+                   be loaded to this screen. The model may take over an hour to run. 
+                   Once the model is finished running, the results 
+                   file will automatically download as a CSV. Load the file in the 
+                   Results tab to view your modelled elk abundance estimates."
+                 ), 
+                 htmlOutput("model_progress"),
+                 br(),
+                 htmlOutput("model_error"),
+                 verbatimTextOutput("clock_output"),
+                 tags$style(
+                   HTML("#clock_output {
                        position: absolute;
                        bottom: 10px;
                        left: 10px;
@@ -139,7 +151,34 @@ server <- function(input, output, session) {
   observe({
     timer()
     output$clock_output <- renderText({
+    ## Reset txt files ----
+    writeLines("FALSE", "running.txt")
+    writeLines("FALSE", "done.txt")
+    writeLines("", "progress.txt")
+    writeLines("", "error.txt")   
+    
+    ## RVs ------
+    # default values
+    rv <- reactiveValues(textstream = c(""),
+                         errorstream = c(""),
+                         running = FALSE,
+                         done = FALSE,
+                         error = FALSE,
+                         results_filename = NULL,
+                         results_filepath = NULL,
+                         results_file = NULL)
+    
       clock()
+      rv$running <- paste(readLines("running.txt", warn = F))
+      if(isolate(rv$running)){
+        rv$textstream <- paste(readLines("progress.txt"), collapse = "<br/>")
+        rv$errorstream <- paste(readLines("error.txt"), collapse = "<br/>")
+      }
+      if(rv$errorstream!=""){
+        rv$error <- TRUE
+        rv$running <- FALSE
+      }
+      rv$done <- paste(readLines("done.txt", warn = F))
     })
   })
   
@@ -151,66 +190,65 @@ server <- function(input, output, session) {
     }
   })
   
-  # Load data from the uploaded Excel file
-  observeEvent(input$data_file, {
-    file_path(input$data_file$datapath)
-  })
-  
-  # Run the R script on the uploaded file
-  observeEvent(input$run_script, {
-      # Show progress bar while running the model
-      # withProgress(message = "Running the model...", detail = "This can take an hour or more.", {
-    withCallingHandlers({
-      shinyjs::html("model_progress", "")
-      withProgress(message = "Running the model...", detail = "This can take an hour or more.", {
-      source(
-          "model_stratified.R",
-          echo = T,
-          local = TRUE,
-          keep.source = FALSE,
-          encoding = "UTF-8"
-        )
+    ## File upload ----
+    # Set the path of the uploaded Excel file
+    observeEvent(input$data_file, {
+      file_path(input$data_file$datapath)
+      # reset rvs
+      writeLines("FALSE", "done.txt")    
+      rv$textstream <- ""
+      rv$errorstream <- ""
+    })  
     })
-    },
-    message = function(m){
-      shinyjs::html(id="model_progress", html = "", add=T)
-    })    
-        results_reactive$data <- output
-        script_finished(TRUE)
-      # })
-  })
-  
-  observe({
-    if(script_finished()){
-      # Show the download button after the script has run
-      shinyjs::show("download_results")
-    } else {
-      shinyjs::hide("download_results")
-    }
+    observeEvent(input$run_script, {
+        system2("Rscript", args = c("model_stratified.R", file_path()), wait=F)
+    })
+    output$model_progress <- renderUI({
+      HTML(paste0("<div style='color: #00AA10;'>", rv$textstream, "</div>"))
+    })
+    output$model_error <- renderUI({
+      HTML(paste0("<div style='color: #FF0000;'>", rv$errorstream, "</div>"))
+    })
+    
+    output$script_status <- renderUI({
+      if(rv$running) {
+        status <- "Script running..."
+      } else if (rv$error) {
+        status <- "Error"
+      } else if (rv$done) {
+        status <- "Script finished running!"
+      } else {
+      status <- ""
+      }
+      HTML(paste0("<div style='color:grey;'>", status, "</div>"))
+      })
+    observe({
+      if(rv$done){
+        rv$results_filepath <- paste0(str_subset(list.files(paste0(getwd()), recursive=T, full.names = T), "Results"))[1]
+        rv$results_filename <- str_extract(rv$results_filepath, "(?<=output/).+")
+        rv$results_file <- read_csv(rv$results_filepath)
+      }
+    })
+    
+    # downloadHandler
+    output$download_results <- downloadHandler(
+      filename = function() {
+        # Set the filename for the downloaded file
+        paste0(rv$results_filename)
+      },
+      content = function(file) {
+        # Prepare the data for download (use the data from reactiveValues)
+        write.csv(rv$results_file, file, row.names = F)
+      }
+    )
+    
+    # press download once the results file is ready
+    observe({
+      if(!is.null(rv$results_file)) {
+        runjs("$('#download_results')[0].click();")
+      }
     })
   
-  # Display script status
-  output$script_status <- renderText({
-    if (script_finished()==T) {
-      "Script finished running!"
-      # } else if (input$run_script()) {
-      #   "Running...this can take an hour or more"
-    } else {
-      "Upload a file and run the script."
-    }
-  })
-  
-  # The downloadHandler function
-  output$download_results <- downloadHandler(
-    filename = function() {
-      # Set the filename for the downloaded file
-      paste0("Results_", format(Sys.time(), "%Y%b%d_%H%M"), ".csv")
-    },
-    content = function(file) {
-      # Prepare the data for download (use the data from reactiveValues)
-      write.csv(results_reactive$data, file, row.names = F)
-    }
-  )
   
   # Results tab ----
   ## Building blocks ----

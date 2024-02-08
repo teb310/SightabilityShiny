@@ -1,38 +1,192 @@
 # Elk Sightability Analysis
+# get script start time
+start_time <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
+
+# get uploaded file
+file_path <- paste0(commandArgs(trailingOnly = TRUE))
+# file_path <- "C:/Users/TBRUSH/R/SightabilityModels/old_shiny/input/sightability_template_filled.xlsx"
 
 runModel <- function(file_path) {
+  
+  # set CRAN repo
+  file.edit(".Rprofile") 
+  options(repos = c(CRAN = "https://cloud.r-project.org"))
+  
+  # record that script is running
+  sink("running.txt")
+  cat("TRUE")
+  sink()
+
+  # record start time
+  sink("progress.txt")
+  cat("Start time:", start_time, "\n")
+  cat("\n")
+  sink()
+  
+  # get ready to catch errors
+  sink("error.txt")
+  tryCatch({
+library(readxl)
+library(tidyverse)
+library(R2jags)
+
+wd <- getwd()
+# Name_fixer converts misspelled or abbreviated EPU names to standard names
+name_fixer <- function(EPU_list, EPU_string) {
+  output <- character(length(EPU_string))
+  for (i in seq_along(EPU_string)) {
+    for(h in seq_along(EPU_list$abbr)) {
+      if(str_detect(EPU_string[i], regex(EPU_list$abbr[h], ignore_case = T))){
+        output[i] <- EPU_list$EPU[h]
+        break
+      }
+    }
+  }
+  return(output)
+}
 
 # 1 Load and clean ####
 
 # ## 1.1 LOAD DATA ####
-# UNCOMMENT BELOW IF WORKING OUTSIDE SHINY APP
-# list.of.packages <- c("shiny", "shinyjs", "bslib", "DT", "outliers", "bayesplot", "tidyverse", "lubridate","chron", "readxl", "Cairo", "rjags","coda","truncnorm", "doParallel", "nimble", "xtable", "statip", "R2jags", "SimplyAgree")
-# # Check you have them and load them
-# new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
-# if(length(new.packages)) install.packages(new.packages)
-# lapply(list.of.packages, require, character.only = TRUE)
-# source("helpers_stratified.R")
+# Standard_survey standardizes survey types
+standard_survey <- function(survey_string){
+  output <- case_when(
+    grepl("incident", survey_string, ignore.case = TRUE) ~ "Incidental",
+    grepl("telem", survey_string, ignore.case = TRUE) ~ "Telemetry",
+    grepl("trans", survey_string, ignore.case = TRUE) ~ "Inventory",
+    grepl("invent", survey_string, ignore.case = TRUE) ~ "Inventory",
+    grepl("capt", survey_string, ignore.case = TRUE) ~ "Capture",
+    TRUE ~ "Other")
+  return(output)
+}
 
-# # Set your working directory paths and survey data file path
-# wd <- getwd()
-# input_wd <- paste0(wd,"/input")
-# output_wd <- paste0(wd,"/output")
-# 
-# # create input and output folders if you haven't already
-# dir.create(input_wd)
-# dir.create(output_wd)
-# file <- "C:/Users/TBRUSH/R/SightabilityModels/old_shiny/input/2013_to_2023_data.xlsx"
+# compile_sheets binds all sheets in a file (filepath) that follow a certain naming patter (type)
+# E.g. to bind survey data sheets from all years, type should be "Data"
+compile_sheets <- function(filepath,type){
+  sheets <- excel_sheets(filepath)
+  sheets <- subset(sheets, str_detect(sheets, paste0(type)) ==T)
+  output <- data.frame(matrix(ncol = 0, nrow = 0))
+  for(i in 1:length(sheets))
+  {
+    output <- bind_rows(output, read_excel(filepath, sheet = paste0(sheets[i])))
+  }
+  return(output)
+}
 
-file <- paste0(file_path())
-setwd(input_wd)
+# oper.datify formats obs into oper.dat
+oper.datify <- function(df){
+  transmute(.data = df,
+            x = voc,
+            ym1 = y-1,
+            h = as.double(h),
+            q = 1,
+            z = 1,
+            yr = year.ID,
+            subunits = as.double(subunits),
+            survey.type = NULL)
+}
+
+# augment adds augmented records to obs
+augment <- function(df){
+  aug <- df %>%
+    # need to determine max annual m of each h
+    group_by(yr, h, subunits) %>%
+    summarize(m = n()) %>%
+    ungroup() %>%
+    group_by(h, subunits) %>%
+    reframe(yr = yr,
+            subunits = subunits,
+            m = m,
+            m.max = max(m)) %>%
+    ungroup() %>%
+    mutate(b = 2*m.max,
+           aug = b-m)
+  # create augmented dataframe
+  oper.dat.aug <- aug[rep(1:nrow(aug), aug$aug),] %>%
+    mutate(x = NA, ym1 = NA, h = h, q = NA, z = 0, yr = yr, subunits = subunits, .keep="none") %>%
+    ungroup()
+  # combine dataframes
+  output <- rbind(df, oper.dat.aug) %>%
+    arrange(yr, h, subunits, desc(z))
+  return(output)
+}
+
+# plot.datify formats oper.dat for plot.dat
+plot.datify <- function(df){
+  df %>%
+    select(yr, h, subunits) %>%
+    distinct() %>%
+    mutate(h.plots = h,
+           yr.plots = yr,
+           subunits.plots = subunits) %>%
+    select(h.plots, yr.plots, subunits.plots) %>%
+    arrange(yr.plots, h.plots, subunits.plots)
+}
+
+# scalar.datify creates the scalar.dat file from oper.dat, plot.dat, and sight.dat
+scalar.datify <- function(operdat, plotdat, sightdat){
+  output <- as.data.frame(matrix(NA, 1, (nrow(plotdat))))
+  i <- 1
+  for(i in 1:nrow(plotdat)){
+    output[,i] <- as.double(nrow(operdat %>% filter(yr == plotdat$yr.plots[i], h == plotdat$h.plots[i], subunits == plotdat$subunits.plots[i])))
+    colnames(output)[i] <- paste0("h", plotdat$h.plots[i], "y", plotdat$yr.plots[i], "sub", plotdat$subunits.plots[i])
+  }
+
+  output <- output %>%
+    mutate(R = as.double(nrow(sightdat)),
+           Ngroups = as.double(nrow(operdat)),
+           Nsubunits.yr = as.double(nrow(plotdat)))
+  return(output)
+}
+
+# scalar.sumsify creates the scalar.sums file from plot.dat and scalar.dat
+scalar.sumsify <- function(plotdat, scalardat){
+  # Create scalar.sums to ease modelling
+  # tells us how many rows belong to each year/stratum/subunit combo
+  output <- matrix(NA, nrow(plotdat), 2)
+  for (i in 1:nrow(plotdat)){
+    t <- i-1
+    output[i, 1] <- sum(scalardat[,0:t], 1)
+    output[i, 2] <- sum(scalardat[,0:i])
+  }
+  return(output)
+}
+
+# rjags_to_table turns the rjags object into a readable table
+rjags_to_table <- function(jagsoutput, scalardat, year_list, EPU.ID, stratum_list){
+  jags.summary <- as.data.frame(jagsoutput$BUGSoutput$summary)
+
+  tau.jags <- matrix(NA,(nrow(jags.summary)-3),11)
+  tau.jags <- as.data.frame(tau.jags)
+  tau.jags[,1] <- as.numeric(str_extract(colnames(scalardat)[1:length(jagsoutput$BUGSoutput$median$tau.hat)], "(?<=sub)[:digit:]{1,2}"))
+  tau.jags[,2] <- as.numeric(str_extract(colnames(scalardat)[1:length(jagsoutput$BUGSoutput$median$tau.hat)], "(?<=h)[:digit:]{1,2}"))
+  tau.jags[,3] <- as.numeric(str_extract(colnames(scalardat)[1:length(jagsoutput$BUGSoutput$median$tau.hat)], "(?<=y)[:digit:]{1,2}"))
+  tau.jags[,4] <- round(jags.summary$`50%`[4:nrow(jags.summary)])
+  tau.jags[,5] <- round(jags.summary$`2.5%`[4:nrow(jags.summary)])
+  tau.jags[,6] <- round(jags.summary$`97.5%`[4:nrow(jags.summary)])
+  tau.jags[,7] <- round(jags.summary$`25%`[4:nrow(jags.summary)])
+  tau.jags[,8] <- round(jags.summary$`75%`[4:nrow(jags.summary)])
+  tau.jags[,9] <- round(jags.summary$Rhat[4:nrow(jags.summary)], 3)
+  tau.jags[,10] <- round(jags.summary$sd[4:nrow(jags.summary)]/jags.summary$mean[4:nrow(jags.summary)], 3)
+  tau.jags[,11] <- as.numeric(jags.summary$n.eff[4:nrow(jags.summary)])
+
+  colnames(tau.jags) <- c("subunit.ID", "stratum.ID", "year.ID", "Model","lcl_95", "ucl_95", "lcl_50", "ucl_50", "Rhat", "cv", "n.eff")
+  output <- left_join(tau.jags, year_list, by="year.ID") %>%
+    left_join(EPU.ID, by=c("subunit.ID"="ID")) %>%
+    left_join(stratum_list, by=c("stratum.ID"="h")) %>%
+    select(-year.ID, -stratum.ID, -subunit.ID) %>%
+    select(year, EPU, stratum, Model:n.eff)
+
+  return(output)
+}
 
 # Save EPU names from reliable source
-EPU_list <- read_excel(file, sheet = "EPU_list")
+EPU_list <- read_excel(file_path, sheet = "EPU_list")
 EPU_names <- unique(EPU_list$EPU)
 
 # Extract observations from all years
 # If you didn't name your survey data sheets with "Data", replace below
-obs.all <- compile_sheets(file, "\\d{4} Data")
+obs.all <- compile_sheets(file_path, "\\d{4} Data")
 
 # fix EPU names & survey types
 obs.all$EPU <- name_fixer(EPU_list, obs.all$EPU)
@@ -40,7 +194,7 @@ obs.all$survey.type <- standard_survey(obs.all$survey.type)
 
 # Bring in summary data from each year
 # This acts as a list of all the EPUs that were properly surveyed that year
-eff <- compile_sheets(file, "\\d{4} Summary") %>%
+eff <- compile_sheets(file_path, "\\d{4} Summary") %>%
   filter(!is.na(min_count))
 
 eff$EPU <- name_fixer(EPU_list, eff$EPU)
@@ -266,15 +420,13 @@ scalar.sums <- scalar.sumsify(plot.dat, scalar.dat)
 
 ## 2.5 SAVE INPUTS ####
 
-setwd(input_wd)
-
 # JAGS inputs
 jags_input_names <- c("sight.dat", "oper.dat", "plot.dat", "scalar.dat", "eff", "scalar.sums")
 jags_input <- ls(pattern = paste0("^", paste(jags_input_names, collapse = "|")))
-save(list = jags_input, file = paste0("jags_input_", format(Sys.time(), "%Y%b%d_%H%M"), ".rdata"))
+save(list = jags_input, file = paste0("input/jags_input_", format(Sys.time(), "%Y%b%d_%H%M"), ".rdata"))
 # other inputs
-other_inputs <- c("compile_sheets", "name_fixer", "rjags_to_table", "wd", "input_wd","output_wd","file","EPU.ID","year.ID", "stratum.ID", "eff")
-save(list= other_inputs, file=paste0("other_inputs_", format(Sys.time(), "%Y%b%d_%H%M"), ".rdata"))
+other_inputs <- c("compile_sheets", "name_fixer", "rjags_to_table","file","EPU.ID","EPU_list", "year.ID", "stratum.ID", "eff")
+save(list= other_inputs, file=paste0("input/other_inputs_", format(Sys.time(), "%Y%b%d_%H%M"), ".rdata"))
 
 files_to_keep <- c(jags_input, other_inputs, "other_inputs")
 
@@ -291,13 +443,21 @@ inits <-  function() list(bo=runif(1), bvoc=runif(1))
 params <- c("bo", "bvoc", "tau.hat")
 
 # MCMC settings
-ni <- 40000 
-nt <- 2     
-nb <- 20000
+ni <- 800
+nt <- 2
+nb <- ni/2
 nc <- 3   
 
 ## 3.2 RUN THE MODEL ####
-setwd(paste0(wd, "/www"))
+# record any error messages that occured since tryCatch()
+}, error = function(e) {
+  # Print the error message
+  cat("Error message:", e$message, "\n")
+})
+
+# finish sinking to errors.txt
+sink()
+
 
 # All data
 bundle.dat <- list(x.tilde=sight.dat$x.tilde, z.tilde=sight.dat$z.tilde, #sight.dat
@@ -306,15 +466,48 @@ bundle.dat <- list(x.tilde=sight.dat$x.tilde, z.tilde=sight.dat$z.tilde, #sight.
                    R=scalar.dat$R, Ngroups=scalar.dat$Ngroups, Nsubunits.yr=scalar.dat$Nsubunits.yr, scalars=scalar.sums, #scalar.dat
                    years=length(unique(plot.dat$yr.plots)), stratums=length(unique(plot.dat$h.plots)))
 
-jags_output <- jags(bundle.dat, inits, params, "beta_binom_model_elk2022.txt", nc, ni, nb, nt)
 
 ## 3.4 SAVE OUTPUTS ####
+# sink all progress to progress.txt
+sink("progress.txt")
+cat("Start time:", paste(start_time), "\n\n\n")
+cat("Progress: 0% done \n",paste(format(Sys.time(), "%Y-%m-%d %H:%M:%S")), "\n", sep = "")
+sink()
 
-setwd(output_wd)
+# run thefirst 2%
+jags_output <- jags(bundle.dat, inits, params, "www/beta_binom_model_elk2022.txt", nc, ni, nb, nt)
+
+# continue sinking
+sink("progress.txt")
+
+time_elapsed <- as.numeric(difftime(Sys.time(), as.POSIXct(start_time), units = "secs"))
+end_time <- format(as.POSIXct(start_time) + (time_elapsed/2*100), "%Y-%m-%d %H:%M")
+
+cat("Start time:", paste(start_time), "\nEstimated end time:", end_time, "\n\n")
+cat("Progress: 2% done \n",paste(format(Sys.time(), "%Y-%m-%d %H:%M:%S")), "\n", sep = "")
+
+sink()
+
+# run the rest of the model while sinking
+for (i in 2:50) {
+  jags_output <- update(jags_output, ni, nt)
+  
+  sink("progress.txt")
+  
+  time_elapsed <- as.numeric(difftime(Sys.time(), as.POSIXct(start_time), units = "secs"))
+  end_time <- format(as.POSIXct(start_time) + (time_elapsed/(i*2)*100), "%Y-%m-%d %H:%M")
+  
+  cat("Start time:", paste(start_time), "\nEstimated end time:", end_time, "\n\n")
+  
+  cat("Progress: ", i*2, "% done \n", paste(format(Sys.time(), "%Y-%m-%d %H:%M:%S")), "\n", sep = "")
+  
+  sink()
+}
+
 
 jags_output_names <- c("jags_output", "scalar.dat")
 jags_outputs <- ls(pattern = paste0("^", paste(jags_output_names, collapse = "|")))
-save(list = jags_outputs, file=paste0("jags_output_", format(Sys.time(), "%Y%b%d_%H%M"), ".rdata"))
+save(list = jags_outputs, file=paste0("output/jags_output_", format(Sys.time(), "%Y%b%d_%H%M"), ".rdata"))
 
 files_to_keep <- c(jags_outputs, other_inputs)
 rm(list = setdiff(ls(), files_to_keep))
@@ -322,12 +515,11 @@ rm(list = setdiff(ls(), files_to_keep))
 # 4 Plot & Report ####
 
 ## 4.1 LOAD DATA ####
-setwd(input_wd)
 
 # Get summary data (i.e. standard estimates) from your excel file
-standard <- compile_sheets(file, "Summary") %>%
+standard <- compile_sheets(file_path, "\\d{4} Summary") %>%
   rename(Standard = estimate)
-standard$EPU <- name_fixer(standard$EPU)
+standard$EPU <- name_fixer(EPU_list, standard$EPU)
 
 ## 4.3 CLEAN OUTPUTS ####
 
@@ -411,7 +603,25 @@ results.long <- pivot_longer(results.all,
          Rhat,
          n.eff)
 
-results.long
+## 4.3 Write CSV ####
+
+write_csv(results.long, paste0(getwd(), "/output/Results_", format(Sys.time(), "%Y%b%d_%H%M"), ".csv"))
+
+# update progress
+sink("progress.txt", append = T)
+cat("\nModel finished!\n\nResults will start downloading shortly.\n", sep = "")
+sink()
+
+# mark as done
+sink("done.txt")
+cat("TRUE")
+sink()
+
+# wait a second, then mark running as "false"
+Sys.sleep(time = 3)
+sink("running.txt")
+cat("FALSE")
+sink()
 
 ## 4.5 EXTRAS ####
 
