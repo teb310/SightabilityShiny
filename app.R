@@ -39,6 +39,10 @@ ui <- fluidPage(
   bootstrapLib(bs_theme(bootswatch = "spacelab")),
   useShinyjs(),
   titlePanel("Roosevelt Elk Abundance Estimator"),
+  fluidRow(
+    column(width = 12,
+           htmlOutput("last_updated", style = "position: absolute; top: 1%; right: 1%; font-size: 14px;"))
+  ),
   tabsetPanel(
     type = "tabs",
     tabPanel("Welcome",
@@ -75,7 +79,6 @@ ui <- fluidPage(
           fileInput("data_file", "Upload Excel File", accept = ".xlsx"),
           actionButton("run_script", "Run Script"),
           br(),
-          br(),
           htmlOutput("script_status"),
           downloadButton("download_results")
         ),
@@ -89,8 +92,13 @@ ui <- fluidPage(
                    be loaded to this screen. The model may take over an hour to run.
                    Once the model is finished running, the results
                    file will automatically download as a CSV. Load the file in the
-                   Results tab to view your modelled elk abundance estimates."
+                   Results tab to view your modelled elk abundance estimates by population unit.
+                   Estimates include population abundance with measures of precision (coefficient 
+                   of variation, 95% and 50% confidence intervals), calf:cow and bull:cow ratios, 
+                   and percent branch-antlered males."
           ),
+          br(),
+          p("There may be long pauses between progress updates. As long as the clock in the lower-left corner is running and the left panel says 'Script running...', the model is working."),
           htmlOutput("model_progress"),
           br(),
           htmlOutput("model_error"),
@@ -100,11 +108,10 @@ ui <- fluidPage(
                        position: absolute;
                        bottom: 10px;
                        left: 10px;
-                       }")
-          )
+                       }"
         )
       )
-    ),
+    ))),
     tabPanel("Results",
              sidebarLayout(
                sidebarPanel(uiOutput("sidebarText")),
@@ -116,7 +123,8 @@ ui <- fluidPage(
                    tabPanel("Table",
                             uiOutput("tableUI")),
                    tabPanel("Plot",
-                            uiOutput("plotUI"))
+                            uiOutput("plotUI"),
+                            )
                  )
                )
              ))
@@ -137,6 +145,10 @@ server <- function(input, output, session) {
       file.copy("www/sightability_template.xlsx", file)
     }
   )
+  
+  output$last_updated <- renderUI({
+    paste("App last updated:", format(file.info("app.R")$mtime, "%b %e %Y"))
+  })
   
   # Model tab -----------------------------------------------------------------
   
@@ -198,7 +210,7 @@ server <- function(input, output, session) {
   # Show the run model button only if a file is uploaded
   observe({
     shinyjs::hide("run_script")
-    if (!is.null(file_path())) {
+    if (!is.null(file_path()) & rv$running==FALSE) {
       shinyjs::show("run_script")
     }
   })
@@ -217,6 +229,7 @@ server <- function(input, output, session) {
   output$model_error <- renderUI({
     HTML(paste0("<div style='color: #FF0000;'>", rv$errorstream, "</div>"))
   })
+  
   
   # Show script status
   output$script_status <- renderUI({
@@ -276,7 +289,7 @@ server <- function(input, output, session) {
   # Reactive value defaults
   results_path <- reactiveVal(NULL)
   results_reactive <- reactiveValues(data = NULL)
-  legend_values <- reactiveValues()
+  values <- reactiveValues()
   
   ## Building blocks ----
   # Get results filepath from results_file
@@ -518,7 +531,7 @@ server <- function(input, output, session) {
       # name y axis
       scale_y_continuous("Estimated Abundance", limits = c(0, NA)) +
       # use greyscale for point fill & color (grey is better than white)
-      scale_fill_grey(start = 0, end = 0.7) +
+      scale_fill_grey(start = 0, end = 1) +
       scale_color_grey(start = 0, end = 0.7) +
       # facet wrap
       facet_wrap(as.formula(paste("~", facet())), scales = "free", ncol =
@@ -756,7 +769,7 @@ server <- function(input, output, session) {
     if (selected_trend() == T) {
       p <- p +
         # add scaling info for legend items
-        scale_linetype_manual(legend_values = c(
+        scale_linetype_manual(values = c(
           "Model" = 1,
           "Standard" = 1,
           "Target" = 2,
@@ -764,7 +777,7 @@ server <- function(input, output, session) {
           "50% CI" = 1
         )) +
         scale_color_manual (
-          legend_values = c(
+          values = c(
             "Model" = "black",
             "Standard" = "grey",
             "Target" = "red",
@@ -778,24 +791,24 @@ server <- function(input, output, session) {
       if (input$target == F) {
         p <- p +
           # add scaling info for legend items
-          scale_linetype_manual(legend_values = c("95% CI" = 3,
+          scale_linetype_manual(values = c("95% CI" = 3,
                                                   "50% CI" = 1)) +
           labs(linetype = "")
       } else if (x_var_data() == "EPU") {
         p <- p +
-          scale_linetype_manual(legend_values = c("95% CI" = 3,
+          scale_linetype_manual(values = c("95% CI" = 3,
                                                   "50% CI" = 1)) +
-          scale_color_manual(legend_values = c("Target" = "red")) +
+          scale_color_manual(values = c("Target" = "red")) +
           labs(linetype = "",
                color = "")
       } else {
         p <- p +
-          scale_linetype_manual(legend_values = c(
+          scale_linetype_manual(values = c(
             "95% CI" = 3,
             "50% CI" = 1,
             "Target" = 2
           )) +
-          scale_color_manual(legend_values = c(
+          scale_color_manual(values = c(
             "95% CI" = "black",
             "50% CI" = "black",
             "Target" = "red"
@@ -912,6 +925,7 @@ server <- function(input, output, session) {
       )
     }
   })
+
   
   ### Export table ----
   output$export_table <- downloadHandler(
@@ -936,7 +950,7 @@ server <- function(input, output, session) {
   
   ### Export plot ----
   export_plot_height <- reactive({
-    if (all(input$year == year_span()) & input$EPU == "All") {
+    if (input$year[1] != input$year[2] & input$EPU == "All") {
       2.75 * (ceiling(length(EPU_choices()) - 1) / 3)
     } else {
       9
@@ -999,6 +1013,17 @@ server <- function(input, output, session) {
   })
   
   ### Display sidebar ----
+  
+  
+  output$table_tip <- renderUI({
+    if(!is.null(results_path())) {
+      text <- "Tip: A model estimate followed by '!!' indicates that the estimate is lower than the minimum count. Consider adjusting this number in your final reporting."
+    } else {
+      text <- ""
+    }
+    HTML(paste0("<div style='color:grey; font-size:14px;'>", text, "</div>"))
+  })
+  
   output$sidebarText <- renderUI({
     req(input$tables_plots)
     if (input$tables_plots == "Table") {
@@ -1008,7 +1033,9 @@ server <- function(input, output, session) {
         uiOutput("Year_select"),
         uiOutput("EPU_select"),
         br(),
-        uiOutput("Export_table")
+        uiOutput("Export_table"),
+        br(),
+        htmlOutput("table_tip")
       )
     } else if (input$tables_plots == "Plot") {
       tagList(
