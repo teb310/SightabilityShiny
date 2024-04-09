@@ -39,10 +39,10 @@ ui <- fluidPage(
   bootstrapLib(bs_theme(bootswatch = "spacelab")),
   useShinyjs(),
   titlePanel("Roosevelt Elk Abundance Estimator"),
-  fluidRow(
-    column(width = 12,
-           htmlOutput("last_updated", style = "position: absolute; top: 1%; right: 1%; font-size: 14px;"))
-  ),
+  fluidRow(column(
+    width = 12,
+    htmlOutput("last_updated", style = "position: absolute; top: 1%; right: 1%; font-size: 14px;")
+  )),
   tabsetPanel(
     type = "tabs",
     tabPanel("Welcome",
@@ -93,12 +93,14 @@ ui <- fluidPage(
                    Once the model is finished running, the results
                    file will automatically download as a CSV. Load the file in the
                    Results tab to view your modelled elk abundance estimates by population unit.
-                   Estimates include population abundance with measures of precision (coefficient 
-                   of variation, 95% and 50% confidence intervals), calf:cow and bull:cow ratios, 
+                   Estimates include population abundance with measures of precision (coefficient
+                   of variation, 95% and 50% confidence intervals), calf:cow and bull:cow ratios,
                    and percent branch-antlered males."
           ),
           br(),
-          p("There may be long pauses between progress updates. As long as the clock in the lower-left corner is running and the left panel says 'Script running...', the model is working."),
+          p(
+            "There may be long pauses between progress updates. As long as the clock in the lower-left corner is running and the left panel says 'Script running...', the model is working."
+          ),
           htmlOutput("model_progress"),
           br(),
           htmlOutput("model_error"),
@@ -108,10 +110,11 @@ ui <- fluidPage(
                        position: absolute;
                        bottom: 10px;
                        left: 10px;
-                       }"
+                       }")
+          )
         )
       )
-    ))),
+    ),
     tabPanel("Results",
              sidebarLayout(
                sidebarPanel(uiOutput("sidebarText")),
@@ -123,8 +126,7 @@ ui <- fluidPage(
                    tabPanel("Table",
                             uiOutput("tableUI")),
                    tabPanel("Plot",
-                            uiOutput("plotUI"),
-                            )
+                            uiOutput("plotUI"))
                  )
                )
              ))
@@ -948,6 +950,7 @@ server <- function(input, output, session) {
                    "Export")
   })
   
+  
   ### Export plot ----
   export_plot_height <- reactive({
     if (input$year[1] != input$year[2] & input$EPU == "All") {
@@ -1097,6 +1100,7 @@ server <- function(input, output, session) {
               textOutput("no_file"))
     }
   })
+
 }
 
 # Run the app ----
