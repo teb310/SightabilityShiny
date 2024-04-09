@@ -512,189 +512,96 @@ server <- function(input, output, session) {
   
   ## Plot ----
   ### setup data ----
-  results_plot <- reactive({
-    req(results(),
-        input$year,
-        input$EPU,
-        input$method,
-        x_var_data(),
-        ci_data(),
-        facet())
-    facet_col <- facet()
-    x_var <- x_var_data()
-    plot_data <- results()
-    plot_data$x <- plot_data[[x_var]]
-    if (any(input$year != year_span())) {
-      plot_data <-
-        filter(plot_data,
-               plot_data$year %in% seq(input$year[1], input$year[2]))
-    }
-    if (input$EPU != "All") {
-      plot_data <- filter(plot_data, plot_data$EPU == input$EPU)
-    }
-    if (input$method != "All") {
-      plot_data <- filter(plot_data, plot_data$method == input$method)
-    }
-    if (x_var == "EPU") {
-      selected_trend(FALSE)
-    }
-    x_data <- plot_data[[x_var]]
-    
-    ### create plot ----
-    p <-
-      ggplot(plot_data, aes(x = x, y = estimate, fill = method)) +
-      # color points by method always
-      labs(fill = "Method") +
-      # name y axis
-      scale_y_continuous("Estimated Abundance", limits = c(0, NA)) +
-      # use greyscale for point fill & color (grey is better than white)
-      scale_fill_grey(start = 0, end = 1) +
-      scale_color_grey(start = 0, end = 0.7) +
-      # facet wrap
-      facet_wrap(as.formula(paste("~", facet())), scales = "free", ncol =
-                   3)
-    
-    ### axis settings ----
-    if (x_var_data() == "year") {
-      # make sure there's only one label per year
-      p <- p +
-        scale_x_continuous("Year", breaks = unique(plot_data$year))
-    } else {
-      # name x axis
-      p <- p +
-        scale_x_discrete("Elk Population Unit")
-    }
-    # change x axis labels depending on input$year and input$EPU
-    if (x_var_data() == "year") {
-      if (input$EPU == "All") {
+  observeEvent(input$replot_button, {
+    results_plot <- isolate({
+      req(results(),
+          input$year,
+          input$EPU,
+          input$method,
+          x_var_data(),
+          ci_data(),
+          facet())
+      facet_col <- facet()
+      x_var <- x_var_data()
+      plot_data <- results()
+      plot_data$x <- plot_data[[x_var]]
+      if (any(input$year != year_span())) {
+        plot_data <-
+          filter(plot_data,
+                 plot_data$year %in% seq(input$year[1], input$year[2]))
+      }
+      if (input$EPU != "All") {
+        plot_data <- filter(plot_data, plot_data$EPU == input$EPU)
+      }
+      if (input$method != "All") {
+        plot_data <- filter(plot_data, plot_data$method == input$method)
+      }
+      if (x_var == "EPU") {
+        selected_trend(FALSE)
+      }
+      x_data <- plot_data[[x_var]]
+      
+      ### create plot ----
+      p <-
+        ggplot(plot_data, aes(x = x, y = estimate, fill = method)) +
+        # color points by method always
+        labs(fill = "Method") +
+        # name y axis
+        scale_y_continuous("Estimated Abundance", limits = c(0, NA)) +
+        # use greyscale for point fill & color (grey is better than white)
+        scale_fill_grey(start = 0, end = 1) +
+        scale_color_grey(start = 0, end = 0.7) +
+        # facet wrap
+        facet_wrap(as.formula(paste("~", facet())), scales = "free", ncol =
+                     3)
+      
+      ### axis settings ----
+      if (x_var_data() == "year") {
+        # make sure there's only one label per year
         p <- p +
+          scale_x_continuous("Year", breaks = unique(plot_data$year))
+      } else {
+        # name x axis
+        p <- p +
+          scale_x_discrete("Elk Population Unit")
+      }
+      # change x axis labels depending on input$year and input$EPU
+      if (x_var_data() == "year") {
+        if (input$EPU == "All") {
+          p <- p +
+            theme(
+              axis.text.x = element_text(
+                size = 10,
+                angle = 45,
+                vjust = .8
+              ),
+              axis.text.y = element_text(size = 10),
+              strip.text = element_text(size = 10)
+            )
+        } else {
+          p <- p +
+            theme(
+              axis.text.x = element_text(size = 12),
+              axis.text.y = element_text(size = 14),
+              strip.text = element_text(size = 14)
+            )
+        }
+      } else {
+        p <- p  +
           theme(
             axis.text.x = element_text(
-              size = 10,
-              angle = 45,
-              vjust = .8
+              size = 12,
+              angle = 65,
+              vjust = .5
             ),
-            axis.text.y = element_text(size = 10),
-            strip.text = element_text(size = 10)
-          )
-      } else {
-        p <- p +
-          theme(
-            axis.text.x = element_text(size = 12),
             axis.text.y = element_text(size = 14),
             strip.text = element_text(size = 14)
           )
       }
-    } else {
-      p <- p  +
-        theme(
-          axis.text.x = element_text(
-            size = 12,
-            angle = 65,
-            vjust = .5
-          ),
-          axis.text.y = element_text(size = 14),
-          strip.text = element_text(size = 14)
-        )
-    }
-    
-    ### plot CIs ----
-    if (!is.null(ci_data()$ucl) & !is.null(input$CI)) {
-      if (x_var_data() == "EPU") {
-        if (1 %in% input$CI) {
-          p <- p +
-            # 95% (dashed)
-            geom_linerange(
-              aes(
-                x,
-                ymin = lcl_95,
-                ymax = ucl_95,
-                linetype = "95% CI"
-              ),
-              linewidth = 1,
-              position = position_dodge(width = 0.3)
-            )
-        }
-        if (2 %in% input$CI) {
-          p <- p +
-            # 50% (solid)
-            geom_linerange(
-              aes(
-                x,
-                ymin = lcl_50,
-                ymax = ucl_50,
-                linetype = "50% CI"
-              ),
-              linewidth = 1,
-              position = position_dodge(width = 0.3)
-            )
-        }
-      } else {
-        if (input$target == T) {
-          if (1 %in% input$CI) {
-            p <- p +
-              # 95% (dashed)
-              geom_linerange(
-                aes(
-                  x,
-                  ymin = lcl_95,
-                  ymax = ucl_95,
-                  linetype = "95% CI",
-                  color = "95% CI"
-                ),
-                linewidth = 1,
-                show.legend = F,
-                position = position_dodge(width = 0.3)
-              )
-          }
-          if (2 %in% input$CI) {
-            p <- p +
-              # 50% (solid)
-              geom_linerange(
-                aes(
-                  x,
-                  ymin = lcl_50,
-                  ymax = ucl_50,
-                  linetype = "50% CI",
-                  color = "50% CI"
-                ),
-                linewidth = 1,
-                show.legend = F,
-                position = position_dodge(width = 0.3)
-              )
-          }
-        } else if (selected_trend() == T) {
-          if (1 %in% input$CI) {
-            p <- p +
-              # 95% (dashed)
-              geom_linerange(
-                aes(
-                  x,
-                  ymin = lcl_95,
-                  ymax = ucl_95,
-                  linetype = "95% CI",
-                  color = "95% CI"
-                ),
-                linewidth = 1,
-                position = position_dodge(width = 0.3)
-              )
-          }
-          if (2 %in% input$CI) {
-            p <- p +
-              # 50% (solid)
-              geom_linerange(
-                aes(
-                  x,
-                  ymin = lcl_50,
-                  ymax = ucl_50,
-                  linetype = "50% CI",
-                  color = "50% CI"
-                ),
-                linewidth = 1,
-                position = position_dodge(width = 0.3)
-              )
-          }
-        } else {
+      
+      ### plot CIs ----
+      if (!is.null(ci_data()$ucl) & !is.null(input$CI)) {
+        if (x_var_data() == "EPU") {
           if (1 %in% input$CI) {
             p <- p +
               # 95% (dashed)
@@ -723,135 +630,250 @@ server <- function(input, output, session) {
                 position = position_dodge(width = 0.3)
               )
           }
+        } else {
+          if (input$target == T) {
+            if (1 %in% input$CI) {
+              p <- p +
+                # 95% (dashed)
+                geom_linerange(
+                  aes(
+                    x,
+                    ymin = lcl_95,
+                    ymax = ucl_95,
+                    linetype = "95% CI",
+                    color = "95% CI"
+                  ),
+                  linewidth = 1,
+                  show.legend = F,
+                  position = position_dodge(width = 0.3)
+                )
+            }
+            if (2 %in% input$CI) {
+              p <- p +
+                # 50% (solid)
+                geom_linerange(
+                  aes(
+                    x,
+                    ymin = lcl_50,
+                    ymax = ucl_50,
+                    linetype = "50% CI",
+                    color = "50% CI"
+                  ),
+                  linewidth = 1,
+                  show.legend = F,
+                  position = position_dodge(width = 0.3)
+                )
+            }
+          } else if (selected_trend() == T) {
+            if (1 %in% input$CI) {
+              p <- p +
+                # 95% (dashed)
+                geom_linerange(
+                  aes(
+                    x,
+                    ymin = lcl_95,
+                    ymax = ucl_95,
+                    linetype = "95% CI",
+                    color = "95% CI"
+                  ),
+                  linewidth = 1,
+                  position = position_dodge(width = 0.3)
+                )
+            }
+            if (2 %in% input$CI) {
+              p <- p +
+                # 50% (solid)
+                geom_linerange(
+                  aes(
+                    x,
+                    ymin = lcl_50,
+                    ymax = ucl_50,
+                    linetype = "50% CI",
+                    color = "50% CI"
+                  ),
+                  linewidth = 1,
+                  position = position_dodge(width = 0.3)
+                )
+            }
+          } else {
+            if (1 %in% input$CI) {
+              p <- p +
+                # 95% (dashed)
+                geom_linerange(
+                  aes(
+                    x,
+                    ymin = lcl_95,
+                    ymax = ucl_95,
+                    linetype = "95% CI"
+                  ),
+                  linewidth = 1,
+                  position = position_dodge(width = 0.3)
+                )
+            }
+            if (2 %in% input$CI) {
+              p <- p +
+                # 50% (solid)
+                geom_linerange(
+                  aes(
+                    x,
+                    ymin = lcl_50,
+                    ymax = ucl_50,
+                    linetype = "50% CI"
+                  ),
+                  linewidth = 1,
+                  position = position_dodge(width = 0.3)
+                )
+            }
+          }
         }
       }
-    }
-    
-    ### plot target ----
-    if (input$target == T) {
-      if (x_var_data() == "year") {
-        # Add a horizontal dotted line at the target population value
+      
+      ### plot target ----
+      if (input$target == T) {
+        if (x_var_data() == "year") {
+          # Add a horizontal dotted line at the target population value
+          p <- p +
+            geom_hline(aes(
+              yintercept = target,
+              linetype = "Target",
+              color = "Target"
+            ),
+            linewidth = 1)
+        } else {
+          p <- p +
+            # target point
+            geom_point(aes(
+              x = x,
+              y = target,
+              color = "Target"
+            ),
+            size = 2,
+            shape = 8)
+        }
+      }
+      ### plot trend ----
+      if (x_var_data() == "year" & !is.null(input$trend)) {
+        if (input$trend == T) {
+          # Add a trendline for each set of points (colored by method)
+          p <- p +
+            geom_smooth(
+              aes(color = method, linetype = method),
+              method = lm,
+              se = FALSE,
+              linewidth = 1,
+              show.legend = F,
+              position = position_dodge(width = 0.3)
+            )
+        }
+      }
+      ### plot points ----
+      # Add points on top of everything
+      if (input$EPU == "All" & input$year[1] != input$year[2]) {
         p <- p +
-          geom_hline(aes(
-            yintercept = target,
-            linetype = "Target",
-            color = "Target"
-          ),
-          linewidth = 1)
+          geom_point(
+            shape = 21,
+            size = 2.5,
+            position = position_dodge(width = 0.3)
+          )
       } else {
         p <- p +
-          # target point
-          geom_point(aes(
-            x = x,
-            y = target,
-            color = "Target"
-          ),
-          size = 2,
-          shape = 8)
-      }
-    }
-    ### plot trend ----
-    if (x_var_data() == "year" & !is.null(input$trend)) {
-      if (input$trend == T) {
-        # Add a trendline for each set of points (colored by method)
-        p <- p +
-          geom_smooth(
-            aes(color = method, linetype = method),
-            method = lm,
-            se = FALSE,
-            linewidth = 1,
-            show.legend = F,
+          geom_point(
+            shape = 21,
+            size = 3.5,
             position = position_dodge(width = 0.3)
           )
       }
-    }
-    ### plot points ----
-    # Add points on top of everything
-    if (input$EPU == "All" & input$year[1] != input$year[2]) {
-      p <- p +
-        geom_point(
-          shape = 21,
-          size = 2.5,
-          position = position_dodge(width = 0.3)
-        )
-    } else {
-      p <- p +
-        geom_point(
-          shape = 21,
-          size = 3.5,
-          position = position_dodge(width = 0.3)
-        )
-    }
-    ### Legend ----
-    if (selected_trend() == T) {
-      p <- p +
-        # add scaling info for legend items
-        scale_linetype_manual(values = c(
-          "Model" = 1,
-          "Standard" = 1,
-          "Target" = 2,
-          "95% CI" = 3,
-          "50% CI" = 1
-        )) +
-        scale_color_manual (
-          values = c(
-            "Model" = "black",
-            "Standard" = "grey",
-            "Target" = "red",
-            "95% CI" = "steelblue",
-            "50% CI" = "steelblue"
-          )
-        ) +
-        labs(linetype = "",
-             color = "")
-    } else {
-      if (input$target == F) {
+      ### Legend ----
+      if (selected_trend() == T) {
         p <- p +
           # add scaling info for legend items
-          scale_linetype_manual(values = c("95% CI" = 3,
-                                                  "50% CI" = 1)) +
-          labs(linetype = "")
-      } else if (x_var_data() == "EPU") {
-        p <- p +
-          scale_linetype_manual(values = c("95% CI" = 3,
-                                                  "50% CI" = 1)) +
-          scale_color_manual(values = c("Target" = "red")) +
+          scale_linetype_manual(values = c(
+            "Model" = 1,
+            "Standard" = 1,
+            "Target" = 2,
+            "95% CI" = 3,
+            "50% CI" = 1
+          )) +
+          scale_color_manual (
+            values = c(
+              "Model" = "black",
+              "Standard" = "grey",
+              "Target" = "red",
+              "95% CI" = "steelblue",
+              "50% CI" = "steelblue"
+            )
+          ) +
           labs(linetype = "",
                color = "")
       } else {
-        p <- p +
-          scale_linetype_manual(values = c(
-            "95% CI" = 3,
-            "50% CI" = 1,
-            "Target" = 2
-          )) +
-          scale_color_manual(values = c(
-            "95% CI" = "black",
-            "50% CI" = "black",
-            "Target" = "red"
-          )) +
-          labs(linetype = "",
-               color = "")
+        if (input$target == F) {
+          p <- p +
+            # add scaling info for legend items
+            scale_linetype_manual(values = c("95% CI" = 3,
+                                             "50% CI" = 1)) +
+            labs(linetype = "")
+        } else if (x_var_data() == "EPU") {
+          p <- p +
+            scale_linetype_manual(values = c("95% CI" = 3,
+                                             "50% CI" = 1)) +
+            scale_color_manual(values = c("Target" = "red")) +
+            labs(linetype = "",
+                 color = "")
+        } else {
+          p <- p +
+            scale_linetype_manual(values = c(
+              "95% CI" = 3,
+              "50% CI" = 1,
+              "Target" = 2
+            )) +
+            scale_color_manual(values = c(
+              "95% CI" = "black",
+              "50% CI" = "black",
+              "Target" = "red"
+            )) +
+            labs(linetype = "",
+                 color = "")
+        }
       }
-    }
-    ### final elements ----
-    
-    p <- p  +
-      # Add theme elements
-      theme(
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(),
-        axis.line = element_line(colour = "black"),
-        axis.title.x = element_text(size = 16),
-        axis.title.y = element_text(size = 16),
-        legend.key.size = unit(0.75, 'in'),
-        legend.text = element_text(size = 12),
-        legend.title = element_text(size = 14)
-      )
-    
-    p
+      ### final elements ----
+      
+      p <- p  +
+        # Add theme elements
+        theme(
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.background = element_blank(),
+          axis.line = element_line(colour = "black"),
+          axis.title.x = element_text(size = 16),
+          axis.title.y = element_text(size = 16),
+          legend.key.size = unit(0.75, 'in'),
+          legend.text = element_text(size = 12),
+          legend.title = element_text(size = 14)
+        )
+      
+      p
+    })
+    # Render plot
+    output$plot <- renderPlot({
+    isolate(results_plot)
   })
+    # Create reactive plot height object
+    plot_height <- isolate({
+      req(input$method)
+      if (input$year[1] != input$year[2] & input$EPU == "All") {
+        paste0(ceiling((length(
+          EPU_choices()
+        ) - 1) / 3) * 25, "vh")
+      } else {
+        "80vh"
+      }
+    })
+    # Render plotUI
+    output$plotUI <- renderUI({
+        plotOutput("plot", width = "100%", height = plot_height)
+    })
+  })
+
   
   ## Sidebar UI objects ----
   ### Year slider ----
@@ -942,7 +964,14 @@ server <- function(input, output, session) {
       )
     }
   })
+  
+  ### replot_button ----
 
+  output$replot_button <- renderUI({
+    req(results())
+    actionButton("replot_button", "Plot", icon = icon("stats", lib = "glyphicon"))
+  })
+  
   
   ### Export table ----
   output$export_table <- downloadHandler(
@@ -1064,6 +1093,7 @@ server <- function(input, output, session) {
         uiOutput("Method_select"),
         uiOutput("CI_check"),
         uiOutput("other_options"),
+        uiOutput("replot_button"),
         br(),
         uiOutput("Export_plot")
       )
@@ -1074,6 +1104,8 @@ server <- function(input, output, session) {
   ## Main panel UI objects -----
   # Text for when no results file is uploaded
   output$no_file <- renderText("No file selected")
+  # Text for when no plot has been plotted yet
+  output$no_plot <- renderText("Select from the options on the left, then press 'Plot'")
   
   ### Table tab ----
   # Display table
@@ -1091,25 +1123,12 @@ server <- function(input, output, session) {
   })
   
   ### Plot tab ----
-  # Create reactive plot height object
-  plot_height <- reactive({
-    req(input$method)
-    if (input$year[1] != input$year[2] & input$EPU == "All") {
-      paste0(ceiling((length(
-        EPU_choices()
-      ) - 1) / 3) * 25, "vh")
-    } else {
-      "80vh"
-    }
-  })
-  # Display plot
-  output$plot <- renderPlot(results_plot(), res = 96)
   
-  # Render UI
+  # Render UI when plot button hasn't been pressed
   output$plotUI <- renderUI({
-    if (!is.null(results_plot())) {
-      req(plot_height())
-      plotOutput("plot", width = "100%", height = plot_height())
+    if (!is.null(results_path())) {
+      tagList(br(),
+              textOutput("no_plot"))
     } else {
       tagList(br(),
               textOutput("no_file"))
