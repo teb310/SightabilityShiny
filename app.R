@@ -255,7 +255,7 @@ server <- function(input, output, session) {
     } else if (rv$error) {
       status <- "Error"
     } else if (rv$done) {
-      status <- "Script finished running!"
+      status <- "Script finished running! Check your downloads for the results file."
     } else {
       status <- ""
     }
@@ -263,18 +263,18 @@ server <- function(input, output, session) {
   })
   
   ## Download results ----
-  # set results file names once the script is done running
+  # retrieve results file names once the script is done running
   observe({
     if (rv$done) {
+      # first need to sort the files by modified date/time
+      files <- list.files(paste0(getwd()), full.names = TRUE, recursive = T, pattern = "Results")
+      file_info <- file.info(files)
+      file_info$file_name <- rownames(file_info)
+      sorted_files <- files[order(file_info$mtime, decreasing = T)]
+      # then retrieve newest file
       rv$results_filepath <-
-        paste0(str_subset(
-          list.files(
-            paste0(getwd()),
-            recursive = T,
-            full.names = T
-          ),
-          "Results"
-        ))[1]
+        paste0(sorted_files[1])
+      # cut out the rest of the pathname to get just the filename
       rv$results_filename <-
         str_extract(rv$results_filepath, "(?<=output/).+")
       rv$results_file <- read_csv(rv$results_filepath)
@@ -298,6 +298,7 @@ server <- function(input, output, session) {
     if (!is.null(rv$results_file)) {
       runjs("$('#download_results')[0].click();")
     }
+    rv$results_file <- NULL
   })
   
   
