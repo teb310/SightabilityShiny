@@ -117,13 +117,28 @@ ui <- fluidPage(
     ),
     tabPanel("Results",
              sidebarLayout(
-               sidebarPanel(uiOutput("sidebarText")),
+               sidebarPanel(uiOutput("sidebarText"), width = 3),
                mainPanel(
+                 width = 9,
                  h3("Results"),
                  tabsetPanel(
                    id = "tables_plots",
                    type = "tabs",
                    tabPanel("Table",
+                            tags$head(tags$style(
+                              HTML(
+                                "
+                                     .datatables {
+                                     font-size: 0.9vw;
+                                     }
+
+                                     @media screen and (max-width: 1333px) {
+                                        .datatables {
+                                          font-size: 12px;
+                                    }
+                                     "
+                              )
+                            )),
                             uiOutput("tableUI")),
                    tabPanel("Plot",
                             uiOutput("plotUI"))
