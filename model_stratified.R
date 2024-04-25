@@ -6,7 +6,7 @@ start_time <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
 
 # get uploaded file
 file_path <- paste0(commandArgs(trailingOnly = TRUE))
-# file_path <- "C:/Users/TBRUSH/R/SightabilityModels/old_shiny/input/sightability_template_filled.xlsx"
+# file_path <- "//SFP.IDIR.BCGOV/S140/S40064/WANSHARE/ESD/ESD_Shared/Region 2/Wildlife/Region 2 Wildlife Mgmt/Elk/Inventory/ELK Shiny App/2024_data.xlsx "
 
 runModel <- function(file_path) {
   # set CRAN repo
@@ -35,6 +35,7 @@ runModel <- function(file_path) {
     library(readxl)
     library(tidyverse)
     library(R2jags)
+    library(runjags)
     
     wd <- getwd()
     
@@ -288,7 +289,9 @@ runModel <- function(file_path) {
     
     for (i in seq_along(sight$collars)) {
       if (sight$collars[i] > 1) {
-        sight.dup <- rbind(sight.dup, rep(sight[i, ], sight$collars[i] - 1))
+        for (k in 2:sight$collars[i]) {
+          sight.dup <- rbind(sight.dup, sight[i,])
+        }
       }
     }
     
@@ -450,15 +453,15 @@ runModel <- function(file_path) {
     
     ### 2.1.1 test correlations ####
     # UNCOMMENT BELOW IF YOU WANT TO TEST THE CORRELATION OF GROUP SIZE, HABITAT, ACTIVITY, VOC WITH SIGHTABILITY
-    # sight.dat %>% group_by(z.tilde) %>% summarize(mean = mean(x.tilde))
-    #
+    # sight.dat %>% group_by(z.tilde) %>% summarize(mean = mean(x.tilde, na.rm=T))
+    # 
     # test <- "kendall"
-    #
+    # 
     # x.z <- cor.test(sight.dat$z.tilde, sight.dat$x.tilde, method=test)
     # a.z <- cor.test(sight.dat$z.tilde[!is.na(sight.dat$a)], sight.dat$a[!is.na(sight.dat$a)], method=test)
     # s.z <- cor.test(sight.dat$z.tilde[!is.na(sight.dat$s)], sight.dat$s[!is.na(sight.dat$s)], method=test)
     # t.z <- cor.test(sight.dat$z.tilde[!is.na(sight.dat$t)], sight.dat$t[!is.na(sight.dat$t)], method=test)
-    #
+    # 
     # Correlation <- as.data.frame(matrix(NA, 4, 3))
     # Correlation[1,] <- c("VOC", x.z$estimate, x.z$p.value)
     # Correlation[2,] <- c("Activity", a.z$estimate, a.z$p.value)
@@ -470,7 +473,8 @@ runModel <- function(file_path) {
     
     ### 2.1.2 finish sight.dat ####
     # voc is the only factor significantly correlated with sightability -> select only voc
-    sight.dat <- sight.dat %>% select(x.tilde, z.tilde)
+    sight.dat <- sight.dat %>% select(x.tilde, z.tilde) %>%
+      filter(!is.na(x.tilde))
     
     ## 2.2 Oper.dat ####
     
@@ -612,9 +616,9 @@ runModel <- function(file_path) {
   sink("progress.txt")
   cat("Start time:", paste(start_time), "\n\n\n")
   cat("Progress: 0% done \n", paste(format(Sys.time(), "%Y-%m-%d %H:%M:%S")), "\n", sep = "")
-  sink()
+  sink() 
   
-  # run thefirst 2%
+  # run the first 2%
   jags_output <-
     jags(bundle.dat,
          inits,

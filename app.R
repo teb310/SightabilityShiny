@@ -235,6 +235,7 @@ server <- function(input, output, session) {
   ## Run model ----
   # Run the R script on the uploaded file
   observeEvent(input$run_script, {
+    rv$results_file <- NULL
     system2("Rscript",
             args = c("model_stratified.R", file_path()),
             wait = F)
@@ -298,7 +299,6 @@ server <- function(input, output, session) {
     if (!is.null(rv$results_file)) {
       runjs("$('#download_results')[0].click();")
     }
-    rv$results_file <- NULL
   })
   
   
