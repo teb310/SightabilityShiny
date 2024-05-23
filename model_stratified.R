@@ -6,7 +6,7 @@ start_time <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
 
 # get uploaded file
 file_path <- paste0(commandArgs(trailingOnly = TRUE))
-# file_path <- "//SFP.IDIR.BCGOV/S140/S40064/WANSHARE/ESD/ESD_Shared/Region 2/Wildlife/Region 2 Wildlife Mgmt/Elk/Inventory/ELK Shiny App/2024_data.xlsx "
+# file_path <- "//SFP.IDIR.BCGOV/S140/S40064/WANSHARE/ESD/ESD_Shared/Region 2/Wildlife/Region 2 Wildlife Mgmt/Elk/Inventory/ELK Shiny App/2023_data.xlsx "
 
 runModel <- function(file_path) {
   # set CRAN repo
@@ -420,31 +420,25 @@ runModel <- function(file_path) {
       # standardize habitat
       mutate(
         # HABITAT KEY WORDS
-        # 1 - rock / other (gravel, landfill, road, slide, other)
-        # 2 - meadow / riparian (field, meadow, riparian, wetland, river)
-        # 3 - cutblock / powerline (block, powerline, NSR, FTG)
-        # 4 - mature forest (mature, old)
+        # 1 - rock / meadow / riparian (field, meadow, riparian, wetland, river)
+        # 2 - cutblock / powerline (block, powerline, NSR, FTG)
+        # 3 - mature forest (mature, old)
         habitat = case_when(
-          grepl("mature|old|conifer", habitat, ignore.case = TRUE) ~ 4,
-          grepl("block|powerline|nsr|ftg", habitat, ignore.case = TRUE) ~ 3,
+          grepl("mature|old|conifer", habitat, ignore.case = TRUE) ~ "Mature Forest",
+          grepl("block|powerline|nsr|ftg", habitat, ignore.case = TRUE) ~ "Young Forest",
           grepl(
-            "field|meadow|riparian|wetland|river",
+            "field|meadow|riparian|wetland|river|gravel|landfill|road|wtp|other|slide",
             habitat,
             ignore.case = TRUE
-          ) ~ 2,
-          grepl(
-            "gravel|landfill|road|wtp|other|slide",
-            habitat,
-            ignore.case = TRUE
-          ) ~ 1
+          ) ~ "No Forest",
         ),
         # standardize activity
         activity = case_when(
-          grepl("standing|moving|run", activity, ignore.case = TRUE) ~ 1,
-          grepl("bed", activity, ignore.case = TRUE) ~ 0
+          grepl("standing|moving|run", activity, ignore.case = TRUE) ~ "Standing/Moving",
+          grepl("bed", activity, ignore.case = TRUE) ~ "Bedded"
         ),
-        a = as.double(activity),
-        s = as.double(habitat),
+        a = as.factor(activity),
+        s = factor(habitat, levels = c("No Forest", "Young Forest", "Mature Forest")),
         t = as.double(grpsize),
         x.tilde = as.double(voc),
         z.tilde = as.double(observed)
@@ -453,23 +447,111 @@ runModel <- function(file_path) {
     
     ### 2.1.1 test correlations ####
     # UNCOMMENT BELOW IF YOU WANT TO TEST THE CORRELATION OF GROUP SIZE, HABITAT, ACTIVITY, VOC WITH SIGHTABILITY
-    # sight.dat %>% group_by(z.tilde) %>% summarize(mean = mean(x.tilde, na.rm=T))
-    # 
-    # test <- "kendall"
-    # 
-    # x.z <- cor.test(sight.dat$z.tilde, sight.dat$x.tilde, method=test)
-    # a.z <- cor.test(sight.dat$z.tilde[!is.na(sight.dat$a)], sight.dat$a[!is.na(sight.dat$a)], method=test)
-    # s.z <- cor.test(sight.dat$z.tilde[!is.na(sight.dat$s)], sight.dat$s[!is.na(sight.dat$s)], method=test)
-    # t.z <- cor.test(sight.dat$z.tilde[!is.na(sight.dat$t)], sight.dat$t[!is.na(sight.dat$t)], method=test)
-    # 
-    # Correlation <- as.data.frame(matrix(NA, 4, 3))
-    # Correlation[1,] <- c("VOC", x.z$estimate, x.z$p.value)
-    # Correlation[2,] <- c("Activity", a.z$estimate, a.z$p.value)
-    # Correlation[3,] <- c("Habitat", s.z$estimate, s.z$p.value)
-    # Correlation[4,] <- c("Group size", t.z$estimate, t.z$p.value)
-    # colnames(Correlation) <- c("Variable", "Correlation", "p")
-    #
-    # write.csv(Correlation, "C:/Users/TBRUSH/R/SightabilityModels/output/Correlation.csv", row.names = FALSE)
+    cor.sum <- sight.dat %>% 
+      group_by(z.tilde) %>% 
+      summarize(median.x = median(x.tilde, na.rm=T), sd.x = sd(x.tilde, na.rm=T), se.x = sd(x.tilde, na.rm=T)/sqrt(length(x.tilde[!is.na(x.tilde)])),
+                median.t = median(t, na.rm=T), sd.t = sd(t, na.rm=T), se.t = sd(t, na.rm = T)/sqrt(length(t[!is.na(t)])))
+    
+    # VOC plot
+    ggplot(sight.dat %>% filter(!is.na(x.tilde)) %>% rename ("Visual Obstruction" = x.tilde) %>% mutate(z.tilde = if_else(z.tilde==1, "Seen", "Missed")), aes(as.factor(z.tilde), `Visual Obstruction`)) +
+      geom_boxplot(aes(fill = z.tilde)) +
+      stat_summary(fun = "mean", geom = "point", shape = 8, size = 3)+
+      ylim(c(0,1)) +
+      scale_fill_brewer(palette = "Paired") +
+      xlab("") +
+      theme_classic() +
+      theme(legend.position="none", 
+            axis.title.y = element_text(size = 14, margin = margin(0,10,0,0)),
+            axis.text.y = element_text(size = 12),
+            axis.text.x = element_text(size = 14, color="black"))
+    
+    # Group size plot
+    ggplot(sight.dat %>% filter(!is.na(t)) %>% rename ("Group size" = t) %>% mutate(z.tilde = if_else(z.tilde==1, "Seen", "Missed")), aes(as.factor(z.tilde), `Group size`)) +
+      geom_boxplot(aes(fill = z.tilde)) +
+      stat_summary(fun = "mean", geom = "point", shape = 8, size = 3)+
+      ylim(c(0,50)) +
+      xlab("") +
+      scale_fill_brewer(palette = "Paired") +
+      theme_classic() +
+      theme(legend.position="none", 
+            axis.title.y = element_text(size = 14, margin = margin(0,10,0,0)),
+            axis.text.y = element_text(size = 12),
+            axis.text.x = element_text(size = 14, color="black"))
+    
+    # Habitat plot
+    
+    sight.prop <- sight.dat %>% 
+      filter(!is.na(s)) %>% 
+      group_by(z.tilde) %>% 
+      summarize(n.z = n())
+    sight.prop.s <- sight.dat %>% 
+      filter(!is.na(s)) %>% 
+      group_by(z.tilde, s) %>% 
+      summarize(n.s = n()) %>% 
+      inner_join(sight.prop, by="z.tilde") %>% 
+      mutate(prop = n.s/n.z,
+             z.tilde = if_else(z.tilde == 1, "Seen", "Missed")) %>%
+      rename("Habitat" = s)
+    
+    ggplot(sight.prop.s, mapping = aes(as.factor(z.tilde), prop)) +
+      geom_col(aes(fill = Habitat),
+               position = "dodge",
+               color = "grey30") +
+      scale_y_continuous(labels = scales::percent) +
+      labs(x = "", y = "Percentage of Observations") +
+      scale_fill_brewer(palette = "Greens") +
+      theme_classic() +
+      theme(
+        axis.title.y = element_text(size = 14, margin = margin(0, 10, 0, 0)),
+        axis.text.y = element_text(size = 12),
+        axis.text.x = element_text(size = 14, color = "black"),
+        legend.text = element_text(size = 12, color = "grey30"),
+        legend.title = element_text(size = 14)
+      )
+    
+    # Activity plot
+    
+    sight.prop <- sight.dat %>% 
+      filter(!is.na(a)) %>% 
+      group_by(z.tilde) %>% 
+      summarize(n.z = n())
+    sight.prop.a <- sight.dat %>% 
+      filter(!is.na(a)) %>% 
+      group_by(z.tilde, a) %>% 
+      summarize(n.a = n()) %>% 
+      inner_join(sight.prop, by="z.tilde") %>% 
+      mutate(prop = n.a/n.z,
+             z.tilde = if_else(z.tilde == 1, "Seen", "Missed")) %>%
+      rename("Activity" = a)
+    
+    ggplot(sight.prop.a, mapping = aes(as.factor(z.tilde), prop)) +
+      geom_col(aes(fill=Activity), color = "grey30", position = "dodge") +
+      scale_y_continuous(labels = scales::percent) +
+      labs(x = "", y = "Percentage of Observations") +
+      theme_classic() +
+      scale_fill_brewer(palette = "RdYlBu", direction = -1) +
+      theme(axis.title.y = element_text(size = 14, margin = margin(0, 10, 0, 0)),
+            axis.text.y = element_text(size = 12),
+            axis.text.x = element_text(size = 14, color = "black"),
+            legend.text = element_text(size = 12, color = "grey30"),
+            legend.title = element_text(size = 14))
+    
+    test <- "pearson"
+
+    x.z <- cor.test(sight.dat$z.tilde, sight.dat$x.tilde, method=test)
+    t.z <- cor.test(sight.dat$z.tilde[!is.na(sight.dat$t)], sight.dat$t[!is.na(sight.dat$t)], method=test)
+    a.z <- chisq.test(sight.dat$z.tilde[!is.na(sight.dat$a)], sight.dat$a[!is.na(sight.dat$a)])
+    s.z <- chisq.test(sight.dat$z.tilde[!is.na(sight.dat$s)], sight.dat$s[!is.na(sight.dat$s)])
+
+    Correlation <- as.data.frame(matrix(NA, 4, 3))
+    Correlation[1,] <- c("VOC", x.z$estimate, x.z$p.value)
+    Correlation[2,] <- c("Group size", t.z$estimate, t.z$p.value)
+    Correlation[3,] <- c("Activity", a.z$statistic, a.z$p.value)
+    Correlation[4,] <- c("Habitat", s.z$statistic, s.z$p.value)
+    colnames(Correlation) <- c("Variable", "Correlation", "p")
+
+    write.csv(Correlation, "C:/Users/TBRUSH/R/SightabilityModels/output/Correlation.csv", row.names = FALSE)
+    write.csv(sight.dat, "C:/Users/TBRUSH/R/SightabilityModels/output/Sightability_2023.csv", row.names = FALSE)
     
     ### 2.1.2 finish sight.dat ####
     # voc is the only factor significantly correlated with sightability -> select only voc
