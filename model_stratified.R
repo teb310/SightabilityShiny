@@ -253,15 +253,27 @@ runModel <- function(file_path) {
     # Extract observations from all years
     # If you didn't name your survey data sheets with "Data", replace below
     obs.all <- compile_sheets(file_path, "\\d{4} Data")
+    # warning when there are duplicate rows (suggesting more than one data sheet per year)
+    if(sum(duplicated(obs.all)) > 10){
+      cat("Warning: ", sum(duplicated(obs.all)), " duplicate rows in dataset. Make sure you only have one `Data` sheet per year.\n")
+    }
     
-    # fix EPU names & survey types
+    # fix EPU names
     obs.all$EPU <- name_fixer(EPU_list, obs.all$EPU)
+    # warning when a bunch of EPUs are not in EPU_list
+    if(nrow(obs.all[obs.all$EPU=="",]) > 5*length(unique(obs.all$year))){
+      cat("Warning: ", nrow(obs.all[obs.all$EPU=="",]), " observations have EPU names not listed in EPU_list. Is you EPU_list complete?\n")
+    }
+    # fix survey types
     obs.all$survey.type <- standard_survey(obs.all$survey.type)
     
     # Bring in summary data from each year
     # This acts as a list of all the EPUs that were properly surveyed that year
     eff <- compile_sheets(file_path, "\\d{4} Summary") %>%
       filter(!is.na(min_count))
+    if(nrow(eff[eff$EPU=="",]) > 1){
+      cat("Warning: Not all EPUs listed in summary sheets are represented in EPU_list sheet. Please check your EPU_list.\n")
+    }
     
     eff$EPU <- name_fixer(EPU_list, eff$EPU)
     
@@ -447,112 +459,112 @@ runModel <- function(file_path) {
     
     ### 2.1.1 test correlations ####
     # UNCOMMENT BELOW IF YOU WANT TO TEST THE CORRELATION OF GROUP SIZE, HABITAT, ACTIVITY, VOC WITH SIGHTABILITY
-    cor.sum <- sight.dat %>% 
-      group_by(z.tilde) %>% 
-      summarize(median.x = median(x.tilde, na.rm=T), sd.x = sd(x.tilde, na.rm=T), se.x = sd(x.tilde, na.rm=T)/sqrt(length(x.tilde[!is.na(x.tilde)])),
-                median.t = median(t, na.rm=T), sd.t = sd(t, na.rm=T), se.t = sd(t, na.rm = T)/sqrt(length(t[!is.na(t)])))
-    
-    # VOC plot
-    ggplot(sight.dat %>% filter(!is.na(x.tilde)) %>% rename ("Visual Obstruction" = x.tilde) %>% mutate(z.tilde = if_else(z.tilde==1, "Seen", "Missed")), aes(as.factor(z.tilde), `Visual Obstruction`)) +
-      geom_boxplot(aes(fill = z.tilde)) +
-      stat_summary(fun = "mean", geom = "point", shape = 8, size = 3)+
-      ylim(c(0,1)) +
-      scale_fill_brewer(palette = "Paired") +
-      xlab("") +
-      theme_classic() +
-      theme(legend.position="none", 
-            axis.title.y = element_text(size = 14, margin = margin(0,10,0,0)),
-            axis.text.y = element_text(size = 12),
-            axis.text.x = element_text(size = 14, color="black"))
-    
-    # Group size plot
-    ggplot(sight.dat %>% filter(!is.na(t)) %>% rename ("Group size" = t) %>% mutate(z.tilde = if_else(z.tilde==1, "Seen", "Missed")), aes(as.factor(z.tilde), `Group size`)) +
-      geom_boxplot(aes(fill = z.tilde)) +
-      stat_summary(fun = "mean", geom = "point", shape = 8, size = 3)+
-      ylim(c(0,50)) +
-      xlab("") +
-      scale_fill_brewer(palette = "Paired") +
-      theme_classic() +
-      theme(legend.position="none", 
-            axis.title.y = element_text(size = 14, margin = margin(0,10,0,0)),
-            axis.text.y = element_text(size = 12),
-            axis.text.x = element_text(size = 14, color="black"))
-    
-    # Habitat plot
-    
-    sight.prop <- sight.dat %>% 
-      filter(!is.na(s)) %>% 
-      group_by(z.tilde) %>% 
-      summarize(n.z = n())
-    sight.prop.s <- sight.dat %>% 
-      filter(!is.na(s)) %>% 
-      group_by(z.tilde, s) %>% 
-      summarize(n.s = n()) %>% 
-      inner_join(sight.prop, by="z.tilde") %>% 
-      mutate(prop = n.s/n.z,
-             z.tilde = if_else(z.tilde == 1, "Seen", "Missed")) %>%
-      rename("Habitat" = s)
-    
-    ggplot(sight.prop.s, mapping = aes(as.factor(z.tilde), prop)) +
-      geom_col(aes(fill = Habitat),
-               position = "dodge",
-               color = "grey30") +
-      scale_y_continuous(labels = scales::percent) +
-      labs(x = "", y = "Percentage of Observations") +
-      scale_fill_brewer(palette = "Greens") +
-      theme_classic() +
-      theme(
-        axis.title.y = element_text(size = 14, margin = margin(0, 10, 0, 0)),
-        axis.text.y = element_text(size = 12),
-        axis.text.x = element_text(size = 14, color = "black"),
-        legend.text = element_text(size = 12, color = "grey30"),
-        legend.title = element_text(size = 14)
-      )
-    
-    # Activity plot
-    
-    sight.prop <- sight.dat %>% 
-      filter(!is.na(a)) %>% 
-      group_by(z.tilde) %>% 
-      summarize(n.z = n())
-    sight.prop.a <- sight.dat %>% 
-      filter(!is.na(a)) %>% 
-      group_by(z.tilde, a) %>% 
-      summarize(n.a = n()) %>% 
-      inner_join(sight.prop, by="z.tilde") %>% 
-      mutate(prop = n.a/n.z,
-             z.tilde = if_else(z.tilde == 1, "Seen", "Missed")) %>%
-      rename("Activity" = a)
-    
-    ggplot(sight.prop.a, mapping = aes(as.factor(z.tilde), prop)) +
-      geom_col(aes(fill=Activity), color = "grey30", position = "dodge") +
-      scale_y_continuous(labels = scales::percent) +
-      labs(x = "", y = "Percentage of Observations") +
-      theme_classic() +
-      scale_fill_brewer(palette = "RdYlBu", direction = -1) +
-      theme(axis.title.y = element_text(size = 14, margin = margin(0, 10, 0, 0)),
-            axis.text.y = element_text(size = 12),
-            axis.text.x = element_text(size = 14, color = "black"),
-            legend.text = element_text(size = 12, color = "grey30"),
-            legend.title = element_text(size = 14))
-    
-    test <- "pearson"
+    # cor.sum <- sight.dat %>% 
+    #   group_by(z.tilde) %>% 
+    #   summarize(median.x = median(x.tilde, na.rm=T), sd.x = sd(x.tilde, na.rm=T), se.x = sd(x.tilde, na.rm=T)/sqrt(length(x.tilde[!is.na(x.tilde)])),
+    #             median.t = median(t, na.rm=T), sd.t = sd(t, na.rm=T), se.t = sd(t, na.rm = T)/sqrt(length(t[!is.na(t)])))
+    # 
+    # # VOC plot
+    # ggplot(sight.dat %>% filter(!is.na(x.tilde)) %>% rename ("Visual Obstruction" = x.tilde) %>% mutate(z.tilde = if_else(z.tilde==1, "Seen", "Missed")), aes(as.factor(z.tilde), `Visual Obstruction`)) +
+    #   geom_boxplot(aes(fill = z.tilde)) +
+    #   stat_summary(fun = "mean", geom = "point", shape = 8, size = 3)+
+    #   ylim(c(0,1)) +
+    #   scale_fill_brewer(palette = "Paired") +
+    #   xlab("") +
+    #   theme_classic() +
+    #   theme(legend.position="none", 
+    #         axis.title.y = element_text(size = 14, margin = margin(0,10,0,0)),
+    #         axis.text.y = element_text(size = 12),
+    #         axis.text.x = element_text(size = 14, color="black"))
+    # 
+    # # Group size plot
+    # ggplot(sight.dat %>% filter(!is.na(t)) %>% rename ("Group size" = t) %>% mutate(z.tilde = if_else(z.tilde==1, "Seen", "Missed")), aes(as.factor(z.tilde), `Group size`)) +
+    #   geom_boxplot(aes(fill = z.tilde)) +
+    #   stat_summary(fun = "mean", geom = "point", shape = 8, size = 3)+
+    #   ylim(c(0,50)) +
+    #   xlab("") +
+    #   scale_fill_brewer(palette = "Paired") +
+    #   theme_classic() +
+    #   theme(legend.position="none", 
+    #         axis.title.y = element_text(size = 14, margin = margin(0,10,0,0)),
+    #         axis.text.y = element_text(size = 12),
+    #         axis.text.x = element_text(size = 14, color="black"))
+    # 
+    # # Habitat plot
+    # 
+    # sight.prop <- sight.dat %>% 
+    #   filter(!is.na(s)) %>% 
+    #   group_by(z.tilde) %>% 
+    #   summarize(n.z = n())
+    # sight.prop.s <- sight.dat %>% 
+    #   filter(!is.na(s)) %>% 
+    #   group_by(z.tilde, s) %>% 
+    #   summarize(n.s = n()) %>% 
+    #   inner_join(sight.prop, by="z.tilde") %>% 
+    #   mutate(prop = n.s/n.z,
+    #          z.tilde = if_else(z.tilde == 1, "Seen", "Missed")) %>%
+    #   rename("Habitat" = s)
+    # 
+    # ggplot(sight.prop.s, mapping = aes(as.factor(z.tilde), prop)) +
+    #   geom_col(aes(fill = Habitat),
+    #            position = "dodge",
+    #            color = "grey30") +
+    #   scale_y_continuous(labels = scales::percent) +
+    #   labs(x = "", y = "Percentage of Observations") +
+    #   scale_fill_brewer(palette = "Greens") +
+    #   theme_classic() +
+    #   theme(
+    #     axis.title.y = element_text(size = 14, margin = margin(0, 10, 0, 0)),
+    #     axis.text.y = element_text(size = 12),
+    #     axis.text.x = element_text(size = 14, color = "black"),
+    #     legend.text = element_text(size = 12, color = "grey30"),
+    #     legend.title = element_text(size = 14)
+    #   )
+    # 
+    # # Activity plot
+    # 
+    # sight.prop <- sight.dat %>% 
+    #   filter(!is.na(a)) %>% 
+    #   group_by(z.tilde) %>% 
+    #   summarize(n.z = n())
+    # sight.prop.a <- sight.dat %>% 
+    #   filter(!is.na(a)) %>% 
+    #   group_by(z.tilde, a) %>% 
+    #   summarize(n.a = n()) %>% 
+    #   inner_join(sight.prop, by="z.tilde") %>% 
+    #   mutate(prop = n.a/n.z,
+    #          z.tilde = if_else(z.tilde == 1, "Seen", "Missed")) %>%
+    #   rename("Activity" = a)
+    # 
+    # ggplot(sight.prop.a, mapping = aes(as.factor(z.tilde), prop)) +
+    #   geom_col(aes(fill=Activity), color = "grey30", position = "dodge") +
+    #   scale_y_continuous(labels = scales::percent) +
+    #   labs(x = "", y = "Percentage of Observations") +
+    #   theme_classic() +
+    #   scale_fill_brewer(palette = "RdYlBu", direction = -1) +
+    #   theme(axis.title.y = element_text(size = 14, margin = margin(0, 10, 0, 0)),
+    #         axis.text.y = element_text(size = 12),
+    #         axis.text.x = element_text(size = 14, color = "black"),
+    #         legend.text = element_text(size = 12, color = "grey30"),
+    #         legend.title = element_text(size = 14))
+    # 
+    # test <- "pearson"
+    # 
+    # x.z <- cor.test(sight.dat$z.tilde, sight.dat$x.tilde, method=test)
+    # t.z <- cor.test(sight.dat$z.tilde[!is.na(sight.dat$t)], sight.dat$t[!is.na(sight.dat$t)], method=test)
+    # a.z <- chisq.test(sight.dat$z.tilde[!is.na(sight.dat$a)], sight.dat$a[!is.na(sight.dat$a)])
+    # s.z <- chisq.test(sight.dat$z.tilde[!is.na(sight.dat$s)], sight.dat$s[!is.na(sight.dat$s)])
+    # 
+    # Correlation <- as.data.frame(matrix(NA, 4, 3))
+    # Correlation[1,] <- c("VOC", x.z$estimate, x.z$p.value)
+    # Correlation[2,] <- c("Group size", t.z$estimate, t.z$p.value)
+    # Correlation[3,] <- c("Activity", a.z$statistic, a.z$p.value)
+    # Correlation[4,] <- c("Habitat", s.z$statistic, s.z$p.value)
+    # colnames(Correlation) <- c("Variable", "Correlation", "p")
+    # 
+    # write.csv(Correlation, "C:/Users/TBRUSH/R/SightabilityModels/output/Correlation.csv", row.names = FALSE)
+    # write.csv(sight.dat, "C:/Users/TBRUSH/R/SightabilityModels/output/Sightability_2023.csv", row.names = FALSE)
 
-    x.z <- cor.test(sight.dat$z.tilde, sight.dat$x.tilde, method=test)
-    t.z <- cor.test(sight.dat$z.tilde[!is.na(sight.dat$t)], sight.dat$t[!is.na(sight.dat$t)], method=test)
-    a.z <- chisq.test(sight.dat$z.tilde[!is.na(sight.dat$a)], sight.dat$a[!is.na(sight.dat$a)])
-    s.z <- chisq.test(sight.dat$z.tilde[!is.na(sight.dat$s)], sight.dat$s[!is.na(sight.dat$s)])
-
-    Correlation <- as.data.frame(matrix(NA, 4, 3))
-    Correlation[1,] <- c("VOC", x.z$estimate, x.z$p.value)
-    Correlation[2,] <- c("Group size", t.z$estimate, t.z$p.value)
-    Correlation[3,] <- c("Activity", a.z$statistic, a.z$p.value)
-    Correlation[4,] <- c("Habitat", s.z$statistic, s.z$p.value)
-    colnames(Correlation) <- c("Variable", "Correlation", "p")
-
-    write.csv(Correlation, "C:/Users/TBRUSH/R/SightabilityModels/output/Correlation.csv", row.names = FALSE)
-    write.csv(sight.dat, "C:/Users/TBRUSH/R/SightabilityModels/output/Sightability_2023.csv", row.names = FALSE)
-    
     ### 2.1.2 finish sight.dat ####
     # voc is the only factor significantly correlated with sightability -> select only voc
     sight.dat <- sight.dat %>% select(x.tilde, z.tilde) %>%
