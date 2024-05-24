@@ -513,8 +513,9 @@ server <- function(input, output, session) {
   
   ## Plot ----
   ### setup data ----
-  observeEvent(input$replot_button, {
-    results_plot <- isolate({
+
+results_plot <- eventReactive(input$replot_button, {
+  isolate({
       req(results(),
           input$year,
           input$EPU,
@@ -854,10 +855,14 @@ server <- function(input, output, session) {
       
       p
     })
+})
+  
     # Render plot
+  observeEvent(input$replot_button, {
     output$plot <- renderPlot({
-    isolate(results_plot)
+    isolate(results_plot())
   })
+    
     # Create reactive plot height object
     plot_height <- isolate({
       req(input$method)
@@ -986,7 +991,7 @@ server <- function(input, output, session) {
             ".csv", sep = "_")
     },
     content = function(file) {
-      write.csv(results_table(), file, row.names = FALSE)
+      write.csv(results_table() %>% select(-exclamation), file, row.names = FALSE)
     }
   )
   output$Export_table <- renderUI ({

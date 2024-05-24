@@ -254,7 +254,7 @@ runModel <- function(file_path) {
     # If you didn't name your survey data sheets with "Data", replace below
     obs.all <- compile_sheets(file_path, "\\d{4} Data")
     # warning when there are duplicate rows (suggesting more than one data sheet per year)
-    if(sum(duplicated(obs.all)) > 10){
+    if(sum(duplicated(obs.all)) > 5*length(unique(obs.all$year))){
       cat("Warning: ", sum(duplicated(obs.all)), " duplicate rows in dataset. Make sure you only have one `Data` sheet per year.\n")
     }
     
