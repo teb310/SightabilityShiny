@@ -7,6 +7,7 @@ start_time <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
 # get uploaded file
 file_path <- paste0(commandArgs(trailingOnly = TRUE))
 # file_path <- "//SFP.IDIR.BCGOV/S140/S40064/WANSHARE/ESD/ESD_Shared/Region 2/Wildlife/Region 2 Wildlife Mgmt/Elk/Inventory/ELK Shiny App/2023_data.xlsx "
+# file_path <- "input/sightability_WCR_elk_2020-2024_May29_2024.xlsx"
 
 runModel <- function(file_path) {
   # set CRAN repo
@@ -254,16 +255,16 @@ runModel <- function(file_path) {
     # If you didn't name your survey data sheets with "Data", replace below
     obs.all <- compile_sheets(file_path, "\\d{4} Data")
     # warning when there are duplicate rows (suggesting more than one data sheet per year)
-    if(sum(duplicated(obs.all)) > 5*length(unique(obs.all$year))){
-      cat("Warning: ", sum(duplicated(obs.all)), " duplicate rows in dataset. Make sure you only have one `Data` sheet per year.\n")
-    }
+    # if(sum(duplicated(obs.all)) > 20*length(unique(obs.all$year))){
+    #   cat("Warning: ", sum(duplicated(obs.all)), " duplicate rows in dataset. Make sure you only have one `Data` sheet per year.\n")
+    # }
     
     # fix EPU names
     obs.all$EPU <- name_fixer(EPU_list, obs.all$EPU)
     # warning when a bunch of EPUs are not in EPU_list
-    if(nrow(obs.all[obs.all$EPU=="",]) > 5*length(unique(obs.all$year))){
-      cat("Warning: ", nrow(obs.all[obs.all$EPU=="",]), " observations have EPU names not listed in EPU_list. Is you EPU_list complete?\n")
-    }
+    # if(nrow(obs.all[obs.all$EPU=="",]) > 5*length(unique(obs.all$year))){
+    #   stop(nrow(obs.all[obs.all$EPU=="",]), " observations have EPU names not listed in EPU_list. Is you EPU_list complete?\n")
+    # }
     # fix survey types
     obs.all$survey.type <- standard_survey(obs.all$survey.type)
     
@@ -271,11 +272,18 @@ runModel <- function(file_path) {
     # This acts as a list of all the EPUs that were properly surveyed that year
     eff <- compile_sheets(file_path, "\\d{4} Summary") %>%
       filter(!is.na(min_count))
-    if(nrow(eff[eff$EPU=="",]) > 1){
-      cat("Warning: Not all EPUs listed in summary sheets are represented in EPU_list sheet. Please check your EPU_list.\n")
-    }
     
+    # throw an error if there are an unequal amount of data and summary sheets
+    if(length(setdiff(unique(obs.all$year), unique(eff$year))) > 0){
+      stop("Data or summary sheet missing for ", setdiff(unique(obs.all$year), unique(eff$year))[1], ". Make sure you include both sheets for each year.")
+    }
+
+    # put eff through name fixer
     eff$EPU <- name_fixer(EPU_list, eff$EPU)
+    # throw an error if it leaves more than one EPU name empty (will mess up reporting)
+    if(nrow(eff[eff$EPU=="",]) > 1){
+      stop("Not all EPUs listed in summary sheets are represented in EPU_list sheet. Please check your EPU_list.\n")
+    }
     
     ## 1.4 Sightability dataset ####
     
@@ -294,7 +302,14 @@ runModel <- function(file_path) {
              # only keep years where sightability trials were done
              sight == TRUE,
              # we only want observations with collars
-             collars > 0)
+             collars > 0,
+             # remove any rows that didn't pass the name check
+             EPU != "")
+    
+    # if there is no sightability data, throw an error
+    if (nrow(sight) == 0) {
+      stop("No sightability data detected. Make sure you have inventory AND telemetry observations in at least one year.\n", call.=F, domain = NA)
+    }
     
     # duplicate observations with >1 collars
     sight.dup <- head(sight, 0)
