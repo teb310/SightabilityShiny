@@ -511,6 +511,56 @@ server <- function(input, output, session) {
     table
   })
   
+  ## SBOT Table ----
+  SBOT_table <- reactive({
+    req(results(), input$year, input$EPU)
+    table_data <- results()
+    table <- table_data %>%
+      # make it wide
+      pivot_wider(
+        id_cols = c(year, EPU, min_count, target, cows_observed, bulls_observed, yearlings_observed, calves_observed, unclassified_observed),
+        names_from = "method",
+        values_from = "estimate"
+      ) %>%
+      # add the rest of the columns back in
+      inner_join(
+        table_data %>% filter(!is.na(lcl_50)) %>% select(
+          year,
+          EPU,
+          lcl_50,
+          ucl_50,
+          lcl_95,
+          ucl_95,
+          calf_cow,
+          bull_cow,
+          percent_branched
+        ),
+        by = c("year", "EPU")
+      ) %>%
+      select(
+        EPU,
+        year,
+        cows_observed,
+        bulls_observed,
+        yearlings_observed,
+        calves_observed,
+        unclassified_observed,
+        total_observed = min_count,
+        population_target = target,
+        standard_estimate = Standard,
+        model_estimate = Model,
+        lower_50_confidence = lcl_50,
+        upper_50_confidence = ucl_50,
+        lower_95_confidence = lcl_95,
+        upper_95_confidence = ucl_95,
+        estimated_calf_per_100_cow = calf_cow,
+        estimated_bull_per_100_cow = bull_cow
+      )
+    # arrange it by ascending year, then alphabetically by EPU
+    arrange(table, year, EPU)
+    table
+  })
+  
   ## Plot ----
   ### setup data ----
 
@@ -1000,6 +1050,24 @@ results_plot <- eventReactive(input$replot_button, {
                    "Export")
   })
   
+  ### Export SBOT table ----
+  output$export_SBOT_table <- downloadHandler(
+    filename = function() {
+      paste("SBOT_population_table_",
+            input$year[1], "_to_", input$year[2],
+            ".csv", 
+            sep = "")
+    },
+    content = function(file) {
+      write.csv(SBOT_table(), file, row.names = T)
+    }
+  )
+  output$Export_SBOT_table <- renderUI ({
+    req(results())
+    downloadButton("export_SBOT_table",
+                   "Export SBOT Table")
+  })
+  
   
   ### Export plot ----
   export_plot_height <- reactive({
@@ -1087,6 +1155,8 @@ results_plot <- eventReactive(input$replot_button, {
         uiOutput("EPU_select"),
         br(),
         uiOutput("Export_table"),
+        br(),
+        uiOutput("Export_SBOT_table"),
         br(),
         htmlOutput("table_tip")
       )
