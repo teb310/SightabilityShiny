@@ -6,7 +6,7 @@ start_time <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
 
 # get uploaded file
 file_path <- paste0(commandArgs(trailingOnly = TRUE))
-# file_path <- "//SFP.IDIR.BCGOV/S140/S40064/WANSHARE/ESD/ESD_Shared/Region 2/Wildlife/Region 2 Wildlife Mgmt/Elk/Inventory/ELK Shiny App/2023_data.xlsx "
+# file_path <- "C:/Users/TBRUSH/R/SightabilityModels/SightabilityShiny/input/2013_to_2023_data.xlsx"
 # file_path <- "input/sightability_WCR_elk_2020-2024_May29_2024.xlsx"
 
 runModel <- function(file_path) {
@@ -386,6 +386,18 @@ runModel <- function(file_path) {
         total = as.numeric(cow + calf + spike + bull + UC)
       )
     
+    ### 1.5.1 Observed dataset ####
+    
+    observed <- obs %>%
+      rename("EPU" = "subunit") %>%
+      group_by(year, EPU) %>%
+      summarize(cows_observed = sum(cow)-sum(spike),
+                bulls_observed = sum(bull),
+                yearlings_observed = sum(spike)*2,
+                calves_observed = sum(calf),
+                unclassified_observed = sum(UC),
+                total_observed = sum(total))
+    
     ## 1.6 Effort ####
     
     # Amend EPU.list to only include surveyed EPUs, then assign ID numbers
@@ -689,7 +701,8 @@ runModel <- function(file_path) {
         "EPU_list",
         "year.ID",
         "stratum.ID",
-        "eff"
+        "eff",
+        "observed"
       )
     save(list = other_inputs,
          file = paste0(
@@ -870,7 +883,8 @@ runModel <- function(file_path) {
   # create a dataframe that combines the important elements of all dataframes
   results.all <- left_join(model_results,
                            standard,
-                           by = c("EPU", "year"))
+                           by = c("EPU", "year")) %>%
+    left_join(observed, by=c("EPU", "year"))
   
   # calculate calf:100 cows and bull:100 cows ratios
   results.all <- results.all %>%
@@ -926,7 +940,12 @@ runModel <- function(file_path) {
       percent_branched,
       cv,
       Rhat,
-      n.eff
+      n.eff,
+      cows_observed,
+      bulls_observed,
+      yearlings_observed,
+      calves_observed,
+      unclassified_observed
     )
   
   ## 4.3 Write CSV ####
