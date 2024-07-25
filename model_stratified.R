@@ -502,11 +502,11 @@ runModel <- function(file_path) {
     
     ### 2.1.1 test correlations ####
     # UNCOMMENT BELOW IF YOU WANT TO TEST THE CORRELATION OF GROUP SIZE, HABITAT, ACTIVITY, VOC WITH SIGHTABILITY
-    # cor.sum <- sight.dat %>% 
-    #   group_by(z.tilde) %>% 
-    #   summarize(median.x = median(x.tilde, na.rm=T), sd.x = sd(x.tilde, na.rm=T), se.x = sd(x.tilde, na.rm=T)/sqrt(length(x.tilde[!is.na(x.tilde)])),
-    #             median.t = median(t, na.rm=T), sd.t = sd(t, na.rm=T), se.t = sd(t, na.rm = T)/sqrt(length(t[!is.na(t)])))
-    # 
+    # cor.sum <- sight.dat %>%
+    #   group_by(z.tilde) %>%
+    #   summarize(median.x = median(x.tilde, na.rm=T), mean.x = mean(x.tilde, na.rm=T), sd.x = sd(x.tilde, na.rm=T), se.x = sd(x.tilde, na.rm=T)/sqrt(length(x.tilde[!is.na(x.tilde)])),
+    #             median.t = median(t, na.rm=T), mean.t = mean(t, na.rm=T), sd.t = sd(t, na.rm=T), se.t = sd(t, na.rm = T)/sqrt(length(t[!is.na(t)])))
+
     # # VOC plot
     # ggplot(sight.dat %>% filter(!is.na(x.tilde)) %>% rename ("Visual Obstruction" = x.tilde) %>% mutate(z.tilde = if_else(z.tilde==1, "Seen", "Missed")), aes(as.factor(z.tilde), `Visual Obstruction`)) +
     #   geom_boxplot(aes(fill = z.tilde)) +
@@ -535,19 +535,19 @@ runModel <- function(file_path) {
     # 
     # # Habitat plot
     # 
-    # sight.prop <- sight.dat %>% 
-    #   filter(!is.na(s)) %>% 
-    #   group_by(z.tilde) %>% 
+    # sight.prop <- sight.dat %>%
+    #   filter(!is.na(s)) %>%
+    #   group_by(z.tilde) %>%
     #   summarize(n.z = n())
-    # sight.prop.s <- sight.dat %>% 
-    #   filter(!is.na(s)) %>% 
-    #   group_by(z.tilde, s) %>% 
-    #   summarize(n.s = n()) %>% 
-    #   inner_join(sight.prop, by="z.tilde") %>% 
+    # sight.prop.s <- sight.dat %>%
+    #   filter(!is.na(s)) %>%
+    #   group_by(z.tilde, s) %>%
+    #   summarize(n.s = n()) %>%
+    #   inner_join(sight.prop, by="z.tilde") %>%
     #   mutate(prop = n.s/n.z,
     #          z.tilde = if_else(z.tilde == 1, "Seen", "Missed")) %>%
     #   rename("Habitat" = s)
-    # 
+
     # ggplot(sight.prop.s, mapping = aes(as.factor(z.tilde), prop)) +
     #   geom_col(aes(fill = Habitat),
     #            position = "dodge",
@@ -566,15 +566,15 @@ runModel <- function(file_path) {
     # 
     # # Activity plot
     # 
-    # sight.prop <- sight.dat %>% 
-    #   filter(!is.na(a)) %>% 
-    #   group_by(z.tilde) %>% 
+    # sight.prop <- sight.dat %>%
+    #   filter(!is.na(a)) %>%
+    #   group_by(z.tilde) %>%
     #   summarize(n.z = n())
-    # sight.prop.a <- sight.dat %>% 
-    #   filter(!is.na(a)) %>% 
-    #   group_by(z.tilde, a) %>% 
-    #   summarize(n.a = n()) %>% 
-    #   inner_join(sight.prop, by="z.tilde") %>% 
+    # sight.prop.a <- sight.dat %>%
+    #   filter(!is.na(a)) %>%
+    #   group_by(z.tilde, a) %>%
+    #   summarize(n.a = n()) %>%
+    #   inner_join(sight.prop, by="z.tilde") %>%
     #   mutate(prop = n.a/n.z,
     #          z.tilde = if_else(z.tilde == 1, "Seen", "Missed")) %>%
     #   rename("Activity" = a)
@@ -591,19 +591,17 @@ runModel <- function(file_path) {
     #         legend.text = element_text(size = 12, color = "grey30"),
     #         legend.title = element_text(size = 14))
     # 
-    # test <- "pearson"
+    # x.z <- t.test(sight.dat$x.tilde[sight.dat$z.tilde==0], sight.dat$x.tilde[sight.dat$z.tilde==1])
+    # t.z <- t.test(sight.dat$t[sight.dat$z.tilde==0 & !is.na(sight.dat$t)], sight.dat$t[sight.dat$z.tilde==1 & !is.na(sight.dat$t)])
+    # a.z <- chisq.test(table(sight.dat$a, sight.dat$z.tilde))
+    # s.z <- chisq.test(table(sight.dat$s, sight.dat$z.tilde))
     # 
-    # x.z <- cor.test(sight.dat$z.tilde, sight.dat$x.tilde, method=test)
-    # t.z <- cor.test(sight.dat$z.tilde[!is.na(sight.dat$t)], sight.dat$t[!is.na(sight.dat$t)], method=test)
-    # a.z <- chisq.test(sight.dat$z.tilde[!is.na(sight.dat$a)], sight.dat$a[!is.na(sight.dat$a)])
-    # s.z <- chisq.test(sight.dat$z.tilde[!is.na(sight.dat$s)], sight.dat$s[!is.na(sight.dat$s)])
-    # 
-    # Correlation <- as.data.frame(matrix(NA, 4, 3))
-    # Correlation[1,] <- c("VOC", x.z$estimate, x.z$p.value)
-    # Correlation[2,] <- c("Group size", t.z$estimate, t.z$p.value)
-    # Correlation[3,] <- c("Activity", a.z$statistic, a.z$p.value)
-    # Correlation[4,] <- c("Habitat", s.z$statistic, s.z$p.value)
-    # colnames(Correlation) <- c("Variable", "Correlation", "p")
+    # Correlation <- as.data.frame(matrix(NA, 4, 5))
+    # Correlation[1,] <- c("VOC", x.z$method, x.z$statistic, x.z$parameter, x.z$p.value)
+    # Correlation[2,] <- c("Group size", t.z$method, t.z$statistic, t.z$parameter, t.z$p.value)
+    # Correlation[3,] <- c("Activity", a.z$method, a.z$statistic, a.z$parameter, a.z$p.value)
+    # Correlation[4,] <- c("Habitat", s.z$method, s.z$statistic, s.z$parameter, s.z$p.value)
+    # colnames(Correlation) <- c("Variable", "Method", "Statistic", "DF", "p")
     # 
     # write.csv(Correlation, "C:/Users/TBRUSH/R/SightabilityModels/output/Correlation.csv", row.names = FALSE)
     # write.csv(sight.dat, "C:/Users/TBRUSH/R/SightabilityModels/output/Sightability_2023.csv", row.names = FALSE)
@@ -877,6 +875,7 @@ runModel <- function(file_path) {
   # calculate calf:100 cows and bull:100 cows ratios
   results.all <- results.all %>%
     mutate(
+      Model = total, .before = lcl_95) %>%
     mutate(
       "calf_cow" = calf * 100 / cow,
       "bull_cow" = bull * 100 / cow,
@@ -965,6 +964,19 @@ runModel <- function(file_path) {
   #          within_50 = if_else(Standard>=lcl_50 & Standard <=ucl_50, T, F),
   #          within_95 = if_else(Standard>=lcl_95 & Standard <=ucl_95, T, F)) %>%
   #   mutate(percent = abs(diff)/((Standard+Model)/2)*100)
+  # 
+  # library(SimplyAgree)
+  # agreement = agree_test(x = results.all$Model,
+  #                       y = results.all$Standard,
+  #                       delta = 1)
+  # print(agreement)
+  # agreement_plot = plot(agreement, smooth_method = "lm")
+  # agreement_plot
+  # 
+  # # TRACEPLOTS
+  # library(mcmcplots)
+  # mcmc_output <- as.mcmc(jags_output)
+  # mcmcplot(mcmc_output, "total.tau.hat") # (for total estimates only)
   
 }
 
