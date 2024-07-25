@@ -105,7 +105,7 @@ runModel <- function(file_path) {
         group_by(yr, h, subunits) %>%
         summarize(m = n()) %>%
         ungroup() %>%
-        group_by(h, subunits) %>%
+        group_by(h) %>%
         reframe(
           yr = yr,
           subunits = subunits,
@@ -113,7 +113,9 @@ runModel <- function(file_path) {
           m.max = max(m)
         ) %>%
         ungroup() %>%
-        mutate(b = 2 * m.max,
+        mutate(b = 2*m.max) %>%
+        # add 10 to b if b<10
+        mutate(b = if_else(b<10, b+10, b),
                aug = b - m)
       # create augmented dataframe
       oper.dat.aug <- aug[rep(1:nrow(aug), aug$aug), ] %>%
@@ -130,7 +132,7 @@ runModel <- function(file_path) {
         ungroup()
       # combine dataframes
       output <- rbind(df, oper.dat.aug) %>%
-        arrange(yr, h, subunits, desc(z))
+        arrange(yr, subunits, h, desc(z))
       return(output)
     }
     
@@ -145,11 +147,12 @@ runModel <- function(file_path) {
           subunits.plots = subunits
         ) %>%
         select(h.plots, yr.plots, subunits.plots) %>%
-        arrange(yr.plots, h.plots, subunits.plots)
+        arrange(yr.plots, subunits.plots, h.plots)
     }
     
     # scalar.datify creates the scalar.dat file from oper.dat, plot.dat, and sight.dat
     scalar.datify <- function(operdat, plotdat, sightdat) {
+      if (!is.null(plotdat$h.plots)) {
       output <- as.data.frame(matrix(NA, 1, (nrow(plotdat))))
       i <- 1
       for (i in 1:nrow(plotdat)) {
@@ -170,6 +173,26 @@ runModel <- function(file_path) {
             "sub",
             plotdat$subunits.plots[i]
           )
+      }
+      } else {
+        output <- as.data.frame(matrix(NA, 1, (nrow(plotdat))))
+        i <- 1
+        for (i in 1:nrow(plotdat)) {
+          output[, i] <-
+            as.double(nrow(
+              operdat %>% filter(
+                yr == plotdat$yr.plots[i],
+                subunits == plotdat$subunits.plots[i]
+              )
+            ))
+          colnames(output)[i] <-
+            paste0(
+              "y",
+              plotdat$yr.plots[i],
+              "sub",
+              plotdat$subunits.plots[i]
+            )
+        }
       }
       
       output <- output %>%
@@ -198,6 +221,7 @@ runModel <- function(file_path) {
     rjags_to_table <-
       function(jagsoutput,
                scalardat,
+               totalscalardat,
                year_list,
                EPU.ID,
                stratum_list) {
@@ -206,11 +230,14 @@ runModel <- function(file_path) {
         tau.jags <- matrix(NA, (nrow(jags.summary) - 3), 11)
         tau.jags <- as.data.frame(tau.jags)
         tau.jags[, 1] <-
-          as.numeric(str_extract(colnames(scalardat)[1:length(jagsoutput$BUGSoutput$median$tau.hat)], "(?<=sub)[:digit:]{1,2}"))
+          c(as.numeric(str_extract(colnames(scalardat)[1:length(jagsoutput$BUGSoutput$median$tau.hat)], "(?<=sub)[:digit:]{1,2}")),
+            as.numeric(str_extract(colnames(totalscalardat)[1:length(jagsoutput$BUGSoutput$median$total.tau.hat)], "(?<=sub)[:digit:]{1,2}")))
         tau.jags[, 2] <-
-          as.numeric(str_extract(colnames(scalardat)[1:length(jagsoutput$BUGSoutput$median$tau.hat)], "(?<=h)[:digit:]{1,2}"))
+          c(as.numeric(str_extract(colnames(scalardat)[1:length(jagsoutput$BUGSoutput$median$tau.hat)], "(?<=h)[:digit:]{1,2}")),
+            rep_len(0, length(jagsoutput$BUGSoutput$median$total.tau.hat)))
         tau.jags[, 3] <-
-          as.numeric(str_extract(colnames(scalardat)[1:length(jagsoutput$BUGSoutput$median$tau.hat)], "(?<=y)[:digit:]{1,2}"))
+          c(as.numeric(str_extract(colnames(scalardat)[1:length(jagsoutput$BUGSoutput$median$tau.hat)], "(?<=y)[:digit:]{1,2}")),
+            as.numeric(str_extract(colnames(totalscalardat)[1:length(jagsoutput$BUGSoutput$median$total.tau.hat)], "(?<=y)[:digit:]{1,2}")))
         tau.jags[, 4] <- round(jags.summary$`50%`[4:nrow(jags.summary)])
         tau.jags[, 5] <- round(jags.summary$`2.5%`[4:nrow(jags.summary)])
         tau.jags[, 6] <- round(jags.summary$`97.5%`[4:nrow(jags.summary)])
@@ -239,6 +266,7 @@ runModel <- function(file_path) {
         output <- left_join(tau.jags, year_list, by = "year.ID") %>%
           left_join(EPU.ID, by = c("subunit.ID" = "ID")) %>%
           left_join(stratum_list, by = c("stratum.ID" = "h")) %>%
+          mutate(stratum = if_else(stratum.ID==0, "total", stratum)) %>%
           select(-year.ID,-stratum.ID,-subunit.ID) %>%
           select(year, EPU, stratum, Model:n.eff)
         
@@ -372,7 +400,7 @@ runModel <- function(file_path) {
     obs <- obs %>%
       pivot_longer(cow:total, names_to = "stratum", values_to = "y") %>%
       filter(y > 0,
-             stratum != "UC")
+             stratum != "total")
     
     stratum.ID <- obs %>%
       select(stratum) %>%
@@ -583,7 +611,8 @@ runModel <- function(file_path) {
     ### 2.1.2 finish sight.dat ####
     # voc is the only factor significantly correlated with sightability -> select only voc
     sight.dat <- sight.dat %>% select(x.tilde, z.tilde) %>%
-      filter(!is.na(x.tilde))
+      filter(!is.na(x.tilde)) %>%
+      ungroup()
     
     ## 2.2 Oper.dat ####
     
@@ -619,12 +648,18 @@ runModel <- function(file_path) {
     plot.dat <- oper.dat %>%
       plot.datify()
     
+    total.plot.dat <- plot.dat %>%
+      select(-h.plots) %>%
+      distinct()
+    
     ## 2.4 Scalar.dat and sums ####
     scalar.dat <- scalar.datify(oper.dat, plot.dat, sight.dat)
+    total.scalar.dat <- suppressWarnings(scalar.datify(oper.dat, total.plot.dat, sight.dat))
     
     # Create scalar.sums to ease modelling
     # tells us how many rows belong to each year/stratum combo
     scalar.sums <- scalar.sumsify(plot.dat, scalar.dat)
+    total.scalar.sums <- scalar.sumsify(total.plot.dat, total.scalar.dat)
     
     ## 2.5 Save inputs ####
     # JAGS inputs
@@ -632,7 +667,9 @@ runModel <- function(file_path) {
       c("sight.dat",
         "oper.dat",
         "plot.dat",
+        "total.plot.dat",
         "scalar.dat",
+        "total.scalar.dat",
         "eff",
         "scalar.sums")
     jags_input <-
@@ -676,7 +713,7 @@ runModel <- function(file_path) {
       list(bo = runif(1), bvoc = runif(1))
     
     # Parameters monitored
-    params <- c("bo", "bvoc", "tau.hat")
+    params <- c("bo", "bvoc", "tau.hat", "total.tau.hat")
     
     # MCMC settings
     ni <- 800
@@ -714,8 +751,10 @@ runModel <- function(file_path) {
       # plot.dat
       R = scalar.dat$R,
       Ngroups = scalar.dat$Ngroups,
-      Nsubunits.yr = scalar.dat$Nsubunits.yr,
+      Nstrat.subunits.yr = scalar.dat$Nsubunits.yr,
+      Nsubunits.yr = total.scalar.dat$Nsubunits.yr,
       scalars = scalar.sums,
+      total.scalars = total.scalar.sums,
       #scalar.dat
       years = length(unique(plot.dat$yr.plots)),
       stratums = length(unique(plot.dat$h.plots))
@@ -808,17 +847,13 @@ runModel <- function(file_path) {
   ### 4.2.1 bayesian ####
   
   jags_table <-
-    rjags_to_table(jags_output, scalar.dat, year.ID, EPU.ID, stratum.ID)
-  
-  total <- jags_table %>%
-    filter(stratum == "total") %>%
-    select(-stratum)
+    rjags_to_table(jags_output, scalar.dat, total.scalar.dat, year.ID, EPU.ID, stratum.ID)
   
   model_results <- jags_table %>%
     select(year:Model) %>%
     pivot_wider(names_from = stratum, values_from = Model) %>%
-    select(-total) %>%
-    left_join(total, by = c("year", "EPU"))
+    inner_join(jags_table %>% filter(stratum=="total") %>% select(-stratum, -Model), by=c("year", "EPU"))
+    
   
   ### 4.2.2 standard ####
   
@@ -842,11 +877,12 @@ runModel <- function(file_path) {
   # calculate calf:100 cows and bull:100 cows ratios
   results.all <- results.all %>%
     mutate(
+    mutate(
       "calf_cow" = calf * 100 / cow,
       "bull_cow" = bull * 100 / cow,
       "percent_branched" = bull / (bull + spike) * 100
     ) %>%
-    select(-cow,-calf,-bull,-spike)
+    select(-cow,-calf,-bull,-spike, -UC, -total)
   
   results.long <- pivot_longer(results.all,
                                c(Model,
@@ -871,7 +907,9 @@ runModel <- function(file_path) {
       Rhat =
         if_else(method == "Model", Rhat, as.double(NA)),
       cv =
-        if_else(method == "Model", cv, as.double(NA))
+        if_else(method == "Model", cv, as.double(NA)),
+      n.eff =
+        if_else(method == "Model", n.eff, as.double(NA))
     ) %>%
     select(
       year,

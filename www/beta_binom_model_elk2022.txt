@@ -42,9 +42,15 @@ model
         y[t] <- ym1[t] + 1
         taus[t] <- q[t] * y[t]
     }
-for (u in 1:Nsubunits.yr) {
+for (u in 1:Nstrat.subunits.yr) {
 t[u] <- scalars[u,1]
 d[u] <- scalars[u,2]
 tau.hat[u] <- sum(taus[c(t[u]:d[u])])
+}
+
+for (v in 1:Nsubunits.yr) {
+u[v] <- total.scalars[v,1]
+w[v] <- total.scalars[v,2]
+total.tau.hat[v] <- sum(taus[c(u[v]:w[v])])
 }
 }
