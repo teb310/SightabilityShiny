@@ -1,8 +1,8 @@
-# SightabilityModels
-Elk sightability factor - South Coast Region
+# SightabilityShiny
+Elk abundance estimator app - South Coast Region
 
-This folder holds the information you'll need to run a Sightability Model on annual elk survey data. First, read the "How to Run Sightability Model...docx" to understand what data you need and how to format it.
+This repo stores the code that runs the Roosevelt Elk Abundance Estimator app (https://3ahyqy-tristen-brush.shinyapps.io/ElkAbundanceEstimator/). To run the sightability model outside of the app, please see my SightabilityModel repo.
 
-Example input data and associated outputs are available in their respective folders. The scripts were based on Feiberg (2013) data and scripts, which are available for reference in the 'Feiberg' folder.
+The models and scripts are based on Feiberg (2013), whose data are available for reference in the 'Feiberg' folder.
 
 Please be sure to copy this folder onto your C:/ drive before attempting to work with the data and scripts.
