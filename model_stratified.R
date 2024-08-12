@@ -114,7 +114,7 @@ runModel <- function(file_path) {
         ) %>%
         ungroup() %>%
         mutate(b = 2*m.max) %>%
-        # add 10 to b if b<10
+        # b needs to be greater than the max number of groups in the population -> add 10 to b if b<10
         mutate(b = if_else(b<10, b+10, b),
                aug = b - m)
       # create augmented dataframe
@@ -368,7 +368,7 @@ runModel <- function(file_path) {
         voc = voc,
         .keep = "unused"
       ) %>%
-      # only keep inventory & capture surveys
+      # remove incidental observations
       filter(survey.type == "Inventory" |
                survey.type == "Capture" | survey.type == "Telemetry") %>%
       # then turn any "capture" to "inventory"
@@ -475,9 +475,9 @@ runModel <- function(file_path) {
     
     ## 2.1 Sight.dat ####
     
-    # s = habitat indicator ()
-    # x = visual obstrcution measurements associated with the test trial data used to develop the sightability model
-    # a = activity indicator (0 if bedded, 1 if standing/moving)
+    # s = habitat indicator (Mature foest, young forest, non-forest)
+    # x = visual obstruction measurements associated with the test trial data used to develop the sightability model
+    # a = activity indicator (bedded, standing/moving)
     # z = detection indicator (1 if the group was observed, 0 otherwise)
     # t = group size
     
@@ -518,7 +518,7 @@ runModel <- function(file_path) {
     #   group_by(z.tilde) %>%
     #   summarize(median.x = median(x.tilde, na.rm=T), mean.x = mean(x.tilde, na.rm=T), sd.x = sd(x.tilde, na.rm=T), se.x = sd(x.tilde, na.rm=T)/sqrt(length(x.tilde[!is.na(x.tilde)])),
     #             median.t = median(t, na.rm=T), mean.t = mean(t, na.rm=T), sd.t = sd(t, na.rm=T), se.t = sd(t, na.rm = T)/sqrt(length(t[!is.na(t)])))
-
+    #
     # # VOC plot
     # ggplot(sight.dat %>% filter(!is.na(x.tilde)) %>% rename ("Visual Obstruction" = x.tilde) %>% mutate(z.tilde = if_else(z.tilde==1, "Seen", "Missed")), aes(as.factor(z.tilde), `Visual Obstruction`)) +
     #   geom_boxplot(aes(fill = z.tilde)) +
@@ -559,7 +559,7 @@ runModel <- function(file_path) {
     #   mutate(prop = n.s/n.z,
     #          z.tilde = if_else(z.tilde == 1, "Seen", "Missed")) %>%
     #   rename("Habitat" = s)
-
+    #
     # ggplot(sight.prop.s, mapping = aes(as.factor(z.tilde), prop)) +
     #   geom_col(aes(fill = Habitat),
     #            position = "dodge",
@@ -638,8 +638,7 @@ runModel <- function(file_path) {
     # join to oper.dat
     oper.dat <- left_join(obs, year.ID, by = "year")
     
-    
-    # get non-augmented data organized
+    # organize non-augmented data
     oper.dat <- oper.dat %>%
       # model won't accept voc = 0 or 1, fix below
       mutate(voc = if_else(voc == 1, 0.99,
