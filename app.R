@@ -398,24 +398,24 @@ server <- function(input, output, session) {
     }
   })
   
-  ### CI ----
-  selected_CI <- reactiveVal(c("1", "2"))
+  ### BCI ----
+  selected_BCI <- reactiveVal(c("1", "2"))
   
   # update when it's changed in either tab
-  observeEvent(input$CI, {
-    selected_CI(input$CI)
+  observeEvent(input$BCI, {
+    selected_BCI(input$BCI)
   })
   
   ci_data <- reactive({
-    if (1 %in% input$CI & 2 %in% input$CI) {
+    if (1 %in% input$BCI & 2 %in% input$BCI) {
       list(
         ucl = c(results()$ucl_95, results()$ucl_50),
         lcl = c(results()$lcl_95, results()$lcl_50)
       )
-    } else if (1 %in% input$CI) {
+    } else if (1 %in% input$BCI) {
       list(ucl = results()$ucl_95,
            lcl = results()$lcl_95)
-    } else if (2 %in% input$CI) {
+    } else if (2 %in% input$BCI) {
       list(ucl = results()$ucl_50,
            lcl = results()$lcl_50)
     } else {
@@ -563,9 +563,9 @@ server <- function(input, output, session) {
   
   ## Plot ----
   ### setup data ----
-
-results_plot <- eventReactive(input$replot_button, {
-  isolate({
+  
+  results_plot <- eventReactive(input$replot_button, {
+    isolate({
       req(results(),
           input$year,
           input$EPU,
@@ -577,6 +577,7 @@ results_plot <- eventReactive(input$replot_button, {
       x_var <- x_var_data()
       plot_data <- results()
       plot_data$x <- plot_data[[x_var]]
+      plot_data$trend <- paste(plot_data$method, "trendline")
       if (any(input$year != year_span())) {
         plot_data <-
           filter(plot_data,
@@ -601,7 +602,7 @@ results_plot <- eventReactive(input$replot_button, {
         # name y axis
         scale_y_continuous("Estimated Abundance", limits = c(0, NA)) +
         # use greyscale for point fill & color (grey is better than white)
-        scale_fill_grey(start = 0, end = 1) +
+        scale_fill_grey(start = 0, end = 0.7) +
         scale_color_grey(start = 0, end = 0.7) +
         # facet wrap
         facet_wrap(as.formula(paste("~", facet())), scales = "free", ncol =
@@ -651,10 +652,10 @@ results_plot <- eventReactive(input$replot_button, {
           )
       }
       
-      ### plot CIs ----
-      if (!is.null(ci_data()$ucl) & !is.null(input$CI)) {
+      ### plot BCIs ----
+      if (!is.null(ci_data()$ucl) & !is.null(input$BCI)) {
         if (x_var_data() == "EPU") {
-          if (1 %in% input$CI) {
+          if (1 %in% input$BCI) {
             p <- p +
               # 95% (dashed)
               geom_linerange(
@@ -662,13 +663,13 @@ results_plot <- eventReactive(input$replot_button, {
                   x,
                   ymin = lcl_95,
                   ymax = ucl_95,
-                  linetype = "95% CI"
+                  linetype = "95% BCI"
                 ),
                 linewidth = 1,
                 position = position_dodge(width = 0.3)
               )
           }
-          if (2 %in% input$CI) {
+          if (2 %in% input$BCI) {
             p <- p +
               # 50% (solid)
               geom_linerange(
@@ -676,7 +677,7 @@ results_plot <- eventReactive(input$replot_button, {
                   x,
                   ymin = lcl_50,
                   ymax = ucl_50,
-                  linetype = "50% CI"
+                  linetype = "50% BCI"
                 ),
                 linewidth = 1,
                 position = position_dodge(width = 0.3)
@@ -684,7 +685,7 @@ results_plot <- eventReactive(input$replot_button, {
           }
         } else {
           if (input$target == T) {
-            if (1 %in% input$CI) {
+            if (1 %in% input$BCI) {
               p <- p +
                 # 95% (dashed)
                 geom_linerange(
@@ -692,15 +693,15 @@ results_plot <- eventReactive(input$replot_button, {
                     x,
                     ymin = lcl_95,
                     ymax = ucl_95,
-                    linetype = "95% CI",
-                    color = "95% CI"
+                    linetype = "95% BCI",
+                    color = "95% BCI"
                   ),
                   linewidth = 1,
-                  show.legend = F,
+                  show.legend = c(linetype=F, color=F),
                   position = position_dodge(width = 0.3)
                 )
             }
-            if (2 %in% input$CI) {
+            if (2 %in% input$BCI) {
               p <- p +
                 # 50% (solid)
                 geom_linerange(
@@ -708,16 +709,16 @@ results_plot <- eventReactive(input$replot_button, {
                     x,
                     ymin = lcl_50,
                     ymax = ucl_50,
-                    linetype = "50% CI",
-                    color = "50% CI"
+                    linetype = "50% BCI",
+                    color = "50% BCI"
                   ),
                   linewidth = 1,
-                  show.legend = F,
+                  show.legend = c(linetype=F, color=F),
                   position = position_dodge(width = 0.3)
                 )
             }
           } else if (selected_trend() == T) {
-            if (1 %in% input$CI) {
+            if (1 %in% input$BCI) {
               p <- p +
                 # 95% (dashed)
                 geom_linerange(
@@ -725,14 +726,15 @@ results_plot <- eventReactive(input$replot_button, {
                     x,
                     ymin = lcl_95,
                     ymax = ucl_95,
-                    linetype = "95% CI",
-                    color = "95% CI"
+                    linetype = "95% BCI",
+                    color = "95% BCI"
                   ),
                   linewidth = 1,
+                  show.legend = c(linetype=F, color=F),
                   position = position_dodge(width = 0.3)
                 )
             }
-            if (2 %in% input$CI) {
+            if (2 %in% input$BCI) {
               p <- p +
                 # 50% (solid)
                 geom_linerange(
@@ -740,15 +742,16 @@ results_plot <- eventReactive(input$replot_button, {
                     x,
                     ymin = lcl_50,
                     ymax = ucl_50,
-                    linetype = "50% CI",
-                    color = "50% CI"
+                    linetype = "50% BCI",
+                    color = "50% BCI"
                   ),
                   linewidth = 1,
+                  show.legend = c(linetype=F, color=F),
                   position = position_dodge(width = 0.3)
                 )
             }
           } else {
-            if (1 %in% input$CI) {
+            if (1 %in% input$BCI) {
               p <- p +
                 # 95% (dashed)
                 geom_linerange(
@@ -756,13 +759,13 @@ results_plot <- eventReactive(input$replot_button, {
                     x,
                     ymin = lcl_95,
                     ymax = ucl_95,
-                    linetype = "95% CI"
+                    linetype = "95% BCI"
                   ),
                   linewidth = 1,
                   position = position_dodge(width = 0.3)
                 )
             }
-            if (2 %in% input$CI) {
+            if (2 %in% input$BCI) {
               p <- p +
                 # 50% (solid)
                 geom_linerange(
@@ -770,7 +773,7 @@ results_plot <- eventReactive(input$replot_button, {
                     x,
                     ymin = lcl_50,
                     ymax = ucl_50,
-                    linetype = "50% CI"
+                    linetype = "50% BCI"
                   ),
                   linewidth = 1,
                   position = position_dodge(width = 0.3)
@@ -790,6 +793,7 @@ results_plot <- eventReactive(input$replot_button, {
               linetype = "Target",
               color = "Target"
             ),
+            show.legend = c(linetype=T, color=T),
             linewidth = 1)
         } else {
           p <- p +
@@ -809,11 +813,11 @@ results_plot <- eventReactive(input$replot_button, {
           # Add a trendline for each set of points (colored by method)
           p <- p +
             geom_smooth(
-              aes(color = method, linetype = method),
+              aes(color = trend, linetype = trend),
               method = lm,
               se = FALSE,
               linewidth = 1,
-              show.legend = F,
+              show.legend = c(color=T, linetype = T, fill=F),
               position = position_dodge(width = 0.3)
             )
         }
@@ -840,19 +844,19 @@ results_plot <- eventReactive(input$replot_button, {
         p <- p +
           # add scaling info for legend items
           scale_linetype_manual(values = c(
-            "Model" = 1,
-            "Standard" = 1,
+            "Model trendline" = 1,
+            "Standard trendline" = 1,
             "Target" = 2,
-            "95% CI" = 3,
-            "50% CI" = 1
+            "95% BCI" = 3,
+            "50% BCI" = 1
           )) +
           scale_color_manual (
             values = c(
-              "Model" = "black",
-              "Standard" = "grey",
+              "Model trendline" = "black",
+              "Standard trendline" = "grey",
               "Target" = "red",
-              "95% CI" = "steelblue",
-              "50% CI" = "steelblue"
+              "95% BCI" = "steelblue",
+              "50% BCI" = "steelblue"
             )
           ) +
           labs(linetype = "",
@@ -861,26 +865,26 @@ results_plot <- eventReactive(input$replot_button, {
         if (input$target == F) {
           p <- p +
             # add scaling info for legend items
-            scale_linetype_manual(values = c("95% CI" = 3,
-                                             "50% CI" = 1)) +
+            scale_linetype_manual(values = c("95% BCI" = 3,
+                                             "50% BCI" = 1)) +
             labs(linetype = "")
         } else if (x_var_data() == "EPU") {
           p <- p +
-            scale_linetype_manual(values = c("95% CI" = 3,
-                                             "50% CI" = 1)) +
+            scale_linetype_manual(values = c("95% BCI" = 3,
+                                             "50% BCI" = 1)) +
             scale_color_manual(values = c("Target" = "red")) +
             labs(linetype = "",
                  color = "")
         } else {
           p <- p +
             scale_linetype_manual(values = c(
-              "95% CI" = 3,
-              "50% CI" = 1,
+              "95% BCI" = 3,
+              "50% BCI" = 1,
               "Target" = 2
             )) +
             scale_color_manual(values = c(
-              "95% CI" = "black",
-              "50% CI" = "black",
+              "95% BCI" = "black",
+              "50% BCI" = "black",
               "Target" = "red"
             )) +
             labs(linetype = "",
@@ -903,15 +907,15 @@ results_plot <- eventReactive(input$replot_button, {
           legend.title = element_text(size = 14)
         )
       
-      p
+      suppressWarnings(print(p))
     })
-})
+  })
   
-    # Render plot
+  # Render plot
   observeEvent(input$replot_button, {
     output$plot <- renderPlot({
-    isolate(results_plot())
-  })
+      isolate(results_plot())
+    })
     
     # Create reactive plot height object
     plot_height <- isolate({
@@ -926,10 +930,10 @@ results_plot <- eventReactive(input$replot_button, {
     })
     # Render plotUI
     output$plotUI <- renderUI({
-        plotOutput("plot", width = "100%", height = plot_height)
+      plotOutput("plot", width = "100%", height = plot_height)
     })
   })
-
+  
   
   ## Sidebar UI objects ----
   ### Year slider ----
@@ -988,19 +992,19 @@ results_plot <- eventReactive(input$replot_button, {
     updateSelectInput(session, "method", selected = selected_method())
   })
   
-  ### CI_check ----
-  output$CI_check <- renderUI ({
+  ### BCI_check ----
+  output$BCI_check <- renderUI ({
     req(results())
     checkboxGroupInput(
-      "CI",
-      strong("Confidence Intervals"),
+      "BCI",
+      strong("Bayesian Credible Intervals"),
       choices = list("95%" = 1, "50%" = 2),
-      selected = selected_CI()
+      selected = selected_BCI()
     )
   })
   
   observe({
-    updateSelectInput(session, "CI", selected = selected_CI())
+    updateSelectInput(session, "BCI", selected = selected_BCI())
   })
   
   
@@ -1022,7 +1026,7 @@ results_plot <- eventReactive(input$replot_button, {
   })
   
   ### replot_button ----
-
+  
   output$replot_button <- renderUI({
     req(results())
     actionButton("replot_button", "Plot", icon = icon("stats", lib = "glyphicon"))
@@ -1095,13 +1099,13 @@ results_plot <- eventReactive(input$replot_button, {
         } else {
           input$method
         },
-        if (!is.null(input$CI)) {
-          if (all(c(1, 2) %in% input$CI)) {
-            "AllCI"
-          } else if (1 %in% input$CI) {
-            "95CI"
-          } else if (2 %in% input$CI) {
-            "50CI"
+        if (!is.null(input$BCI)) {
+          if (all(c(1, 2) %in% input$BCI)) {
+            "AllBCI"
+          } else if (1 %in% input$BCI) {
+            "95BCI"
+          } else if (2 %in% input$BCI) {
+            "50BCI"
           }
         },
         if (input$target == T) {
@@ -1167,7 +1171,7 @@ results_plot <- eventReactive(input$replot_button, {
         uiOutput("Year_select"),
         uiOutput("EPU_select"),
         uiOutput("Method_select"),
-        uiOutput("CI_check"),
+        uiOutput("BCI_check"),
         uiOutput("other_options"),
         uiOutput("replot_button"),
         br(),
@@ -1210,7 +1214,7 @@ results_plot <- eventReactive(input$replot_button, {
               textOutput("no_file"))
     }
   })
-
+  
 }
 
 # Run the app ----
