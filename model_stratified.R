@@ -810,13 +810,14 @@ runModel <- function(file_path) {
   sink()
   
   # run the rest of the model while sinking
+  i <- 2
   for (i in 2:50) {
     jags_output <- update(jags_output, ni, nt)
     
     # update n.eff and Rhat
     n.eff <- n.eff + jags_output$BUGSoutput$summary[,"n.eff"]
     Rhat <- Rhat + jags_output$BUGSoutput$summary[,"Rhat"]
-    
+
     sink("progress.txt")
     
     time_elapsed <-
@@ -841,7 +842,7 @@ runModel <- function(file_path) {
   
   ## 3.3 Save outputs ####
   
-  jags_output_names <- c("jags_output", "scalar.dat")
+  jags_output_names <- c("jags_output", "scalar.dat", "n.eff", "Rhat")
   jags_outputs <-
     ls(pattern = paste0("^", paste(jags_output_names, collapse = "|")))
   save(list = jags_outputs,
