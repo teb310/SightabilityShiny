@@ -243,11 +243,11 @@ runModel <- function(file_path) {
         tau.jags[, 6] <- round(jags.summary$`97.5%`[4:nrow(jags.summary)])
         tau.jags[, 7] <- round(jags.summary$`25%`[4:nrow(jags.summary)])
         tau.jags[, 8] <- round(jags.summary$`75%`[4:nrow(jags.summary)])
-        tau.jags[, 9] <- round(jags.summary$Rhat[4:nrow(jags.summary)], 3)
+        tau.jags[, 9] <- round(Rhat[4:nrow(jags.summary)], 3)
         tau.jags[, 10] <-
           round(jags.summary$sd[4:nrow(jags.summary)] / jags.summary$mean[4:nrow(jags.summary)], 3)
         tau.jags[, 11] <-
-          as.numeric(jags.summary$n.eff[4:nrow(jags.summary)])
+          as.numeric(n.eff[4:nrow(jags.summary)])
         
         colnames(tau.jags) <-
           c(
@@ -781,11 +781,15 @@ runModel <- function(file_path) {
     jags(bundle.dat,
          inits,
          params,
-         "www/beta_binom_model_elk2022.txt",
+         "www/beta_binom_model_elk2024.txt",
          nc,
          ni,
          nb,
          nt)
+  
+  # n.eff and Rhat are only reported for the last update - we need to keep track for all updates and combine
+  n.eff <- jags_output$BUGSoutput$summary[,"n.eff"]
+  Rhat <- jags_output$BUGSoutput$summary[,"Rhat"]
   
   # continue sinking
   sink("progress.txt")
@@ -809,6 +813,10 @@ runModel <- function(file_path) {
   for (i in 2:50) {
     jags_output <- update(jags_output, ni, nt)
     
+    # update n.eff and Rhat
+    n.eff <- n.eff + jags_output$BUGSoutput$summary[,"n.eff"]
+    Rhat <- Rhat + jags_output$BUGSoutput$summary[,"Rhat"]
+    
     sink("progress.txt")
     
     time_elapsed <-
@@ -827,6 +835,9 @@ runModel <- function(file_path) {
     
     sink()
   }
+  
+  # get the mean of Rhats
+  Rhat <- Rhat/50
   
   ## 3.3 Save outputs ####
   
