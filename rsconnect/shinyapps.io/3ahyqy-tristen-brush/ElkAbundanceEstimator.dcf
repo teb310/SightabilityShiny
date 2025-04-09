@@ -5,7 +5,7 @@ account: 3ahyqy-tristen-brush
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 9441907
-bundleId: 8979676
+bundleId: 10081448
 url: https://3ahyqy-tristen-brush.shinyapps.io/ElkAbundanceEstimator/
 asMultiple: FALSE
 asStatic: FALSE

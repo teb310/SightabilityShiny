@@ -6,7 +6,7 @@ start_time <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
 
 # get uploaded file
 file_path <- paste0(commandArgs(trailingOnly = TRUE))
-# file_path <- "C:/Users/TBRUSH/R/SightabilityModels/SightabilityShiny/input/2013_to_2023_data.xlsx"
+# file_path <- "C:/Users/teb31/Downloads/sightability_template (2025).xlsx"
 # file_path <- "input/sightability_WCR_elk_2020-2024_May29_2024.xlsx"
 
 runModel <- function(file_path) {
@@ -276,7 +276,9 @@ runModel <- function(file_path) {
     ## 1.3 Load data ####
     
     # Save EPU names from reliable source
-    EPU_list <- read_excel(file_path, sheet = "EPU_list")
+    EPU_list <- read_excel(file_path, sheet = "EPU_list") %>%
+      # fill in abbreviations as full names when missing
+      mutate(abbr = if_else(is.na(abbr), EPU, abbr))
     EPU_names <- unique(EPU_list$EPU)
     
     # Extract observations from all years
@@ -841,7 +843,7 @@ runModel <- function(file_path) {
   
   ## 3.3 Save outputs ####
   
-  jags_output_names <- c("jags_output", "scalar.dat")
+  jags_output_names <- c("jags_output", "scalar.dat", "Rhat", "n.eff")
   jags_outputs <-
     ls(pattern = paste0("^", paste(jags_output_names, collapse = "|")))
   save(list = jags_outputs,
@@ -905,7 +907,7 @@ runModel <- function(file_path) {
       "bull_cow" = bull * 100 / cow,
       "percent_branched" = bull / (bull + spike) * 100
     ) %>%
-    select(-cow,-calf,-bull,-spike, -UC, -total)
+    select(-any_of(c("cow","calf","bull","spike","UC","total")))
   
   results.long <- pivot_longer(results.all,
                                c(Model,
