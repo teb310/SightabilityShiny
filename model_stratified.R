@@ -6,7 +6,7 @@ start_time <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
 
 # get uploaded file
 file_path <- paste0(commandArgs(trailingOnly = TRUE))
-# file_path <- "C:/Users/TBRUSH/R/SightabilityModels/SightabilityShiny/input/2013_to_2023_data.xlsx"
+# file_path <- "input/2021_to_2023_data.xlsx"
 # file_path <- "input/sightability_WCR_elk_2020-2024_May29_2024.xlsx"
 
 runModel <- function(file_path) {
@@ -37,6 +37,8 @@ runModel <- function(file_path) {
     library(tidyverse)
     library(R2jags)
     library(runjags)
+    library(splines)
+    library(bayesplot)
     
     wd <- getwd()
     
@@ -412,6 +414,7 @@ runModel <- function(file_path) {
     obs <- obs %>%
       pivot_longer(cow:total, names_to = "stratum", values_to = "y") %>%
       filter(y > 0,
+             # remove total stratum - final numbers will be sums of all classes
              stratum != "total")
     
     stratum.ID <- obs %>%
@@ -681,8 +684,10 @@ runModel <- function(file_path) {
         "total.scalar.dat",
         "eff",
         "scalar.sums")
+    
     jags_input <-
       ls(pattern = paste0("^", paste(jags_input_names, collapse = "|")))
+    
     save(list = jags_input,
          file = paste0(
            "input/jags_input_",
@@ -745,9 +750,10 @@ runModel <- function(file_path) {
   # All data
   bundle.dat <-
     list(
+      #sight.dat
       x.tilde = sight.dat$x.tilde,
       z.tilde = sight.dat$z.tilde,
-      #sight.dat
+      # oper.dat
       x = oper.dat$x,
       ym1 = oper.dat$ym1,
       h = oper.dat$h,
@@ -755,19 +761,21 @@ runModel <- function(file_path) {
       z = oper.dat$z,
       yr = oper.dat$yr,
       subunits = oper.dat$subunits,
-      # oper.dat
+      # plot.dat
       h.plots = plot.dat$h.plots,
       yr.plots = plot.dat$yr.plots,
-      # plot.dat
+      Nyears = length(unique(plot.dat$yr.plots)),
+      Nstrata = length(unique(plot.dat$h.plots)),
+      # scalar.dat
       R = scalar.dat$R,
       Ngroups = scalar.dat$Ngroups,
       Nstrat.subunits.yr = scalar.dat$Nsubunits.yr,
       Nsubunits.yr = total.scalar.dat$Nsubunits.yr,
+      Nsubunits = length(unique(plot.dat$subunits.plots)),
       scalars = scalar.sums,
       total.scalars = total.scalar.sums,
-      #scalar.dat
-      years = length(unique(plot.dat$yr.plots)),
-      stratums = length(unique(plot.dat$h.plots))
+      # spline data
+      splines = as.data.frame(ns(x = 1:(length(unique(plot.dat$yr.plots))+1), df = 3))
     )
   
   # sink all progress to progress.txt
@@ -1004,10 +1012,10 @@ runModel <- function(file_path) {
   # agreement_plot
   # 
   # # TRACEPLOTS
-  # library(mcmcplots)
-  # mcmc_output <- as.mcmc(jags_output)
-  # mcmcplot(mcmc_output, "total.tau.hat") # (for total estimates only)
-  
+  # mcmc_output <- unclass(as.mcmc(jags_output))
+  # par(mfrow=c(1,1))
+  # mcmc_trace(mcmc_output, pars = "total.tau.hat[1]") # (for total estimates only)
+
 }
 
 output <- runModel(file_path)
