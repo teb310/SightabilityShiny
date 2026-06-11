@@ -278,7 +278,9 @@ runModel <- function(file_path) {
     ## 1.3 Load data ####
     
     # Save EPU names from reliable source
-    EPU_list <- read_excel(file_path, sheet = "EPU_list")
+    EPU_list <- read_excel(file_path, sheet = "EPU_list") %>%
+      # fill in abbreviations as full names when missing
+      mutate(abbr = if_else(is.na(abbr), EPU, abbr))
     EPU_names <- unique(EPU_list$EPU)
     
     # Extract observations from all years
@@ -914,7 +916,7 @@ runModel <- function(file_path) {
       "bull_cow" = bull * 100 / cow,
       "percent_branched" = bull / (bull + spike) * 100
     ) %>%
-    select(-cow,-calf,-bull,-spike, -UC, -total)
+    select(-any_of(c("cow","calf","bull","spike","UC","total")))
   
   results.long <- pivot_longer(results.all,
                                c(Model,
