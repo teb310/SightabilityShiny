@@ -6,7 +6,7 @@ start_time <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
 
 # get uploaded file
 file_path <- paste0(commandArgs(trailingOnly = TRUE))
-# file_path <- "input/2021_to_2023_data.xlsx"
+# file_path <- "input/2016_to_2023_data.xlsx"
 # file_path <- "input/sightability_WCR_elk_2020-2024_May29_2024.xlsx"
 
 runModel <- function(file_path) {
@@ -229,7 +229,7 @@ runModel <- function(file_path) {
                stratum_list) {
         jags.summary <- as.data.frame(jagsoutput$BUGSoutput$summary)
         
-        tau.jags <- matrix(NA, (nrow(jags.summary) - 3), 11)
+        tau.jags <- matrix(NA, (nrow(jags.summary) - 1), 11)
         tau.jags <- as.data.frame(tau.jags)
         tau.jags[, 1] <-
           c(as.numeric(str_extract(colnames(scalardat)[1:length(jagsoutput$BUGSoutput$median$tau.hat)], "(?<=sub)[:digit:]{1,2}")),
@@ -240,16 +240,16 @@ runModel <- function(file_path) {
         tau.jags[, 3] <-
           c(as.numeric(str_extract(colnames(scalardat)[1:length(jagsoutput$BUGSoutput$median$tau.hat)], "(?<=y)[:digit:]{1,2}")),
             as.numeric(str_extract(colnames(totalscalardat)[1:length(jagsoutput$BUGSoutput$median$total.tau.hat)], "(?<=y)[:digit:]{1,2}")))
-        tau.jags[, 4] <- round(jags.summary$`50%`[4:nrow(jags.summary)])
-        tau.jags[, 5] <- round(jags.summary$`2.5%`[4:nrow(jags.summary)])
-        tau.jags[, 6] <- round(jags.summary$`97.5%`[4:nrow(jags.summary)])
-        tau.jags[, 7] <- round(jags.summary$`25%`[4:nrow(jags.summary)])
-        tau.jags[, 8] <- round(jags.summary$`75%`[4:nrow(jags.summary)])
-        tau.jags[, 9] <- round(Rhat[4:nrow(jags.summary)], 3)
+        tau.jags[, 4] <- round(jags.summary$`50%`[2:nrow(jags.summary)])
+        tau.jags[, 5] <- round(jags.summary$`2.5%`[2:nrow(jags.summary)])
+        tau.jags[, 6] <- round(jags.summary$`97.5%`[2:nrow(jags.summary)])
+        tau.jags[, 7] <- round(jags.summary$`25%`[2:nrow(jags.summary)])
+        tau.jags[, 8] <- round(jags.summary$`75%`[2:nrow(jags.summary)])
+        tau.jags[, 9] <- round(jags.summary$Rhat[2:nrow(jags.summary)], 3)
         tau.jags[, 10] <-
-          round(jags.summary$sd[4:nrow(jags.summary)] / jags.summary$mean[4:nrow(jags.summary)], 3)
+          round(jags.summary$sd[2:nrow(jags.summary)] / jags.summary$mean[2:nrow(jags.summary)], 3)
         tau.jags[, 11] <-
-          as.numeric(n.eff[4:nrow(jags.summary)])
+          as.numeric(jags.summary$n.eff[2:nrow(jags.summary)])
         
         colnames(tau.jags) <-
           c(
@@ -432,49 +432,51 @@ runModel <- function(file_path) {
       mutate(subunits = ID,
              .keep = "unused")
     
-    ## 1.7 Telem adjustment ####
-    #including telemetry obs helps some EPUs but hurts others -> depends on effect on average group size
+    obs <- obs %>% filter(survey.type!="Telemetry")
     
-    group <- obs %>%
-      group_by(subunit, stratum) %>%
-      summarize(avg_group = mean(y))
-    
-    # if keeping telems brings avg groupsize closer to EPU's total average, then keep them
-    telem.stats <- obs %>%
-      ungroup() %>%
-      group_by(year, subunit, stratum, survey.type) %>%
-      summarize(n = n(),
-                count = sum(y)) %>%
-      ungroup() %>%
-      pivot_wider(names_from = survey.type,
-                  values_from = c(n, count)) %>%
-      mutate(
-        n_telem = replace_na(n_Telemetry, 0),
-        n_nontelem = replace_na(n_Inventory, 0),
-        count_telem = replace_na(count_Telemetry, 0),
-        count_nontelem = replace_na(count_Inventory, 0),
-        .keep = "unused"
-      ) %>%
-      filter(count_telem > 0) %>%
-      mutate(
-        avg_group_nontelem = (count_nontelem / n_nontelem),
-        avg_group_telem = (count_telem + count_nontelem) / (n_telem + n_nontelem)
-      ) %>%
-      left_join(group, by = c("subunit", "stratum")) %>%
-      mutate(keep_telem = if_else(
-        abs(avg_group_telem - avg_group) >= abs(avg_group_nontelem - avg_group),
-        F,
-        T
-      ))
-    
-    # add telem direction to obs
-    obs <-
-      left_join(
-        obs,
-        telem.stats %>% select(year, subunit, stratum, keep_telem),
-        by = c("year", "subunit", "stratum")
-      ) %>%
-      filter(!(survey.type == "Telemetry" & keep_telem == F))
+    # ## 1.7 Telem adjustment ####
+    # #including telemetry obs helps some EPUs but hurts others -> depends on effect on average group size
+    # 
+    # group <- obs %>%
+    #   group_by(subunit, stratum) %>%
+    #   summarize(avg_group = mean(y))
+    # 
+    # # if keeping telems brings avg groupsize closer to EPU's total average, then keep them
+    # telem.stats <- obs %>%
+    #   ungroup() %>%
+    #   group_by(year, subunit, stratum, survey.type) %>%
+    #   summarize(n = n(),
+    #             count = sum(y)) %>%
+    #   ungroup() %>%
+    #   pivot_wider(names_from = survey.type,
+    #               values_from = c(n, count)) %>%
+    #   mutate(
+    #     n_telem = replace_na(n_Telemetry, 0),
+    #     n_nontelem = replace_na(n_Inventory, 0),
+    #     count_telem = replace_na(count_Telemetry, 0),
+    #     count_nontelem = replace_na(count_Inventory, 0),
+    #     .keep = "unused"
+    #   ) %>%
+    #   filter(count_telem > 0) %>%
+    #   mutate(
+    #     avg_group_nontelem = (count_nontelem / n_nontelem),
+    #     avg_group_telem = (count_telem + count_nontelem) / (n_telem + n_nontelem)
+    #   ) %>%
+    #   left_join(group, by = c("subunit", "stratum")) %>%
+    #   mutate(keep_telem = if_else(
+    #     abs(avg_group_telem - avg_group) >= abs(avg_group_nontelem - avg_group),
+    #     F,
+    #     T
+    #   ))
+    # 
+    # # add telem direction to obs
+    # obs <-
+    #   left_join(
+    #     obs,
+    #     telem.stats %>% select(year, subunit, stratum, keep_telem),
+    #     by = c("year", "subunit", "stratum")
+    #   ) %>%
+    #   filter(!(survey.type == "Telemetry" & keep_telem == F))
     
     # 2 PREPARE DATA -------------------------------------------------------------
     
@@ -721,22 +723,55 @@ runModel <- function(file_path) {
     
     rm(list = setdiff(ls(), files_to_keep))
     
-    # 3 BAYESIAN ANALYSIS ---------------------------------------------------------
+    # 3 MODEL ---------------------------------------------------------
     
     ## 3.1 Set parameters ####
     
-    # specify initial values
-    inits <-  function()
-      list(bo = runif(1), bvoc = runif(1))
+    params_sightdata <- c("bo", "bvoc")
+    params <- c("tau.hat", "total.tau.hat")
     
-    # Parameters monitored
-    params <- c("bo", "bvoc", "tau.hat", "total.tau.hat")
+    ## 3.2 Bundle data ####
+    # Sightability data
+    sight.bundle.dat <-
+      list(
+        x.tilde = sight.dat$x.tilde,
+        z.tilde = sight.dat$z.tilde,
+        R = scalar.dat$R)
+    # Operational data
+    bundle.dat <-
+      list(
+        # oper.dat
+        x = oper.dat$x,
+        ym1 = oper.dat$ym1,
+        h = oper.dat$h,
+        q = oper.dat$q,
+        z = oper.dat$z,
+        yr = oper.dat$yr,
+        subunits = oper.dat$subunits,
+        # plot.dat
+        h.plots = plot.dat$h.plots,
+        yr.plots = plot.dat$yr.plots,
+        Nyears = length(unique(plot.dat$yr.plots)),
+        Nstrata = length(unique(plot.dat$h.plots)),
+        # scalar.dat
+        Ngroups = scalar.dat$Ngroups,
+        Nstrat.subunits.yr = scalar.dat$Nsubunits.yr,
+        Nsubunits.yr = total.scalar.dat$Nsubunits.yr,
+        Nsubunits = length(unique(plot.dat$subunits.plots)),
+        scalars = scalar.sums,
+        total.scalars = total.scalar.sums,
+        # spline data
+        splines = as.data.frame(ns(x = 1:(length(unique(plot.dat$yr.plots))+1), df = 3))
+      )
     
-    # MCMC settings
-    ni <- 800
+    ## 3.3 Prepare for looping ####
+    nloops <- 75
+
+    # MCMC settings (oper model)
+    ni <- 3000
     nt <- 2
-    nb <- ni / 2
-    nc <- 3
+    nb <- 2000
+    nc <- 2
     
     # record any error messages that occured since tryCatch()
   }, error = function(e) {
@@ -746,113 +781,96 @@ runModel <- function(file_path) {
   
   # finish sinking to errors.txt
   sink()
-  
-  ## 3.2 Run the model ####
-  
-  # All data
-  bundle.dat <-
-    list(
-      #sight.dat
-      x.tilde = sight.dat$x.tilde,
-      z.tilde = sight.dat$z.tilde,
-      # oper.dat
-      x = oper.dat$x,
-      ym1 = oper.dat$ym1,
-      h = oper.dat$h,
-      q = oper.dat$q,
-      z = oper.dat$z,
-      yr = oper.dat$yr,
-      subunits = oper.dat$subunits,
-      # plot.dat
-      h.plots = plot.dat$h.plots,
-      yr.plots = plot.dat$yr.plots,
-      Nyears = length(unique(plot.dat$yr.plots)),
-      Nstrata = length(unique(plot.dat$h.plots)),
-      # scalar.dat
-      R = scalar.dat$R,
-      Ngroups = scalar.dat$Ngroups,
-      Nstrat.subunits.yr = scalar.dat$Nsubunits.yr,
-      Nsubunits.yr = total.scalar.dat$Nsubunits.yr,
-      Nsubunits = length(unique(plot.dat$subunits.plots)),
-      scalars = scalar.sums,
-      total.scalars = total.scalar.sums,
-      # spline data
-      splines = as.data.frame(ns(x = 1:(length(unique(plot.dat$yr.plots))+1), df = 3))
-    )
-  
-  # sink all progress to progress.txt
-  sink("progress.txt")
-  cat("Start time:", paste(start_time), "\n\n\n")
-  cat("Progress: 0% done \n", paste(format(Sys.time(), "%Y-%m-%d %H:%M:%S")), "\n", sep = "")
-  sink() 
-  
-  # run the first 2%
-  jags_output <-
-    jags(bundle.dat,
-         inits,
-         params,
-         "www/beta_binom_model_elk2024.txt",
-         nc,
-         ni,
-         nb,
-         nt)
-  
-  # n.eff and Rhat are only reported for the last update - we need to keep track for all updates and combine
-  n.eff <- jags_output$BUGSoutput$summary[,"n.eff"]
-  Rhat <- jags_output$BUGSoutput$summary[,"Rhat"]
-  
-  # continue sinking
-  sink("progress.txt")
-  
-  time_elapsed <-
-    as.numeric(difftime(Sys.time(), as.POSIXct(start_time), units = "secs"))
-  end_time <-
-    format(as.POSIXct(start_time) + (time_elapsed / 2 * 100),
-           "%Y-%m-%d %H:%M")
-  
-  cat("Start time:",
-      paste(start_time),
-      "\nEstimated end time:",
-      end_time,
-      "\n\n")
-  cat("Progress: 2% done \n", paste(format(Sys.time(), "%Y-%m-%d %H:%M:%S")), "\n", sep = "")
-  
-  sink()
-  
-  # run the rest of the model while sinking
-  i <- 2
-  for (i in 2:50) {
-    jags_output <- update(jags_output, ni, nt)
     
-    # update n.eff and Rhat
-    n.eff <- n.eff + jags_output$BUGSoutput$summary[,"n.eff"]
-    Rhat <- Rhat + jags_output$BUGSoutput$summary[,"Rhat"]
-
+    
+    ## 3.4 Run sightability model ####
+    # write to progress.txt
     sink("progress.txt")
+    cat("Start time:", paste(start_time), "\nModelling sightability...\n")
+    sink() 
     
+    JAGSsight <- jags.parallel(data = sight.bundle.dat,
+                               inits = NULL,
+                               parameters.to.save = params_sightdata,
+                               model.file = "www/beta_binom_model_elk2026_step1.txt",
+                               n.chains = 2,
+                               n.iter = 10000,
+                               n.burnin = 3000,
+                               n.thin = 1)
+    
+    sight.posteriors <- as.data.frame(JAGSsight$BUGSoutput$sims.list)
+    save(sight.posteriors, file = paste0("output/sight_results_", format(Sys.time(), "%Y%b%d_%H%M"),".rdata"))
+
+    # sample posteriors
+    sample.index <- sample(x = 1:nrow(sight.posteriors), size = nloops, replace = F)
+    bo_fromSight <- sight.posteriors$bo[sample.index]
+    bvoc_fromSight <- sight.posteriors$bvoc[sample.index]
+    
+    # update progress
+    sink("progress.txt")
+    cat("Start time:", paste(start_time), "\nSightability modelling complete!\n")
+    sink() 
+  
+    ## 3.5 Run TS model ####
+  
+    # update progress
+    sink("progress.txt")
+    cat("Sightability modelling complete!\nModelling abundance...\n")
+    start_time <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
+    cat("Start time:", paste(start_time), "\n\n\n")
+    cat("Progress: 0 of ", paste(nloops), " loops completed.\n", paste(format(Sys.time(), "%Y-%m-%d %H:%M:%S")), "\n", sep = "")
+    sink() 
+  
+  # start the loop
+    jags_output <- list()
+  for(ii in 1:nloops){
+    # Sample beta-hats from sightability model posteriors and add to bundle.dat
+    bundle.dat[["bo"]] <- bo_fromSight[ii]
+    bundle.dat[["bvoc"]] <- bvoc_fromSight[ii]
+    # run model
+    jags_output[[ii]] <- jags.parallel(bundle.dat,
+                                       inits = NULL,
+                                       params,
+                                       "www/beta_binom_model_elk2026_step2.txt",
+                                       nc,
+                                       ni,
+                                       nb,
+                                       nt)
+    # save temporary file
+    jags_output_names <- c("jags_output", "scalar.dat", "nloops", "ii")
+    jags_outputs <-
+      ls(pattern = paste0("^", paste(jags_output_names, collapse = "|")))
+    save(list = jags_outputs,
+         file = paste0(
+           "output/jags_output_tmp.rdata"
+         ))
+    # update progress
+    sink("progress.txt")
     time_elapsed <-
       as.numeric(difftime(Sys.time(), as.POSIXct(start_time), units = "secs"))
     end_time <-
-      format(as.POSIXct(start_time) + (time_elapsed / (i * 2) * 100),
+      format(as.POSIXct(start_time) + (time_elapsed / ii * nloops),
              "%Y-%m-%d %H:%M")
-    
+    cat("Sightability modelling complete!\nModelling abundance...\n")
     cat("Start time:",
         paste(start_time),
         "\nEstimated end time:",
         end_time,
         "\n\n")
-    
-    cat("Progress: ", i * 2, "% done \n", paste(format(Sys.time(), "%Y-%m-%d %H:%M:%S")), "\n", sep = "")
-    
+    cat("Progress: ", paste(ii, "of", nloops, "loops completed."), "\n", 
+        paste(format(Sys.time(), "%Y-%m-%d %H:%M:%S")), "\n", sep = "")
     sink()
   }
+    
+    # update progress
+    sink("progress.txt", append = T)
+    cat("\nModel finished!\n\nBuilding results table...\n",
+        sep = "")
+    sink()
   
-  # get the mean of Rhats
-  Rhat <- Rhat/50
+  ## 3.6 Save outputs ####
   
-  ## 3.3 Save outputs ####
-  
-  jags_output_names <- c("jags_output", "scalar.dat", "n.eff", "Rhat")
+  jags_output_names <- c("jags_output", "scalar.dat", "nloops", "end_time")
   jags_outputs <-
     ls(pattern = paste0("^", paste(jags_output_names, collapse = "|")))
   save(list = jags_outputs,
@@ -878,13 +896,26 @@ runModel <- function(file_path) {
   
   ### 4.2.1 bayesian ####
   
-  jags_table <-
-    rjags_to_table(jags_output, scalar.dat, total.scalar.dat, year.ID, EPU.ID, stratum.ID)
-  
-  model_results <- jags_table %>%
+  jags_table <- NULL
+  for(ii in 1:nloops){
+    tmp <- rjags_to_table(jags_output[[ii]], scalar.dat, total.scalar.dat, year.ID, EPU.ID, stratum.ID)
+    tmp$loopID <- ii
+    jags_table <- rbind.data.frame(jags_table, tmp)
+  }
+  # get medians of all values
+  jags_table_medians <- jags_table %>%
+    group_by(year, EPU, stratum) %>%
+    summarise(
+      across(c(Model:n.eff),
+             ~ median(.x, na.rm = TRUE)), 
+      .groups = "drop"
+    ) %>%
+    mutate(across(c(Model:ucl_50, n.eff), ~round(.x,0)))
+    
+  model_results <- jags_table_medians %>%
     select(year:Model) %>%
     pivot_wider(names_from = stratum, values_from = Model) %>%
-    inner_join(jags_table %>% filter(stratum=="total") %>% select(-stratum, -Model), by=c("year", "EPU"))
+    inner_join(jags_table_medians %>% filter(stratum=="total") %>% select(-stratum, -Model), by=c("year", "EPU"))
     
   
   ### 4.2.2 standard ####
@@ -971,6 +1002,10 @@ runModel <- function(file_path) {
   
   ## 4.3 Write CSV ####
   
+  sink("progress.txt", append = T)
+  cat("\nResults ready! File will start downloading shortly.\n",)
+  sink()
+  
   write_csv(results.long,
             paste0(
               getwd(),
@@ -978,12 +1013,6 @@ runModel <- function(file_path) {
               format(Sys.time(), "%Y%b%d_%H%M"),
               ".csv"
             ))
-  
-  # update progress
-  sink("progress.txt", append = T)
-  cat("\nModel finished!\n\nResults will start downloading shortly.\n",
-      sep = "")
-  sink()
   
   # mark as done
   sink("done.txt")

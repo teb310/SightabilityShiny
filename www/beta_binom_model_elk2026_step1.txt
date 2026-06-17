@@ -1,0 +1,16 @@
+# sightability model
+model
+{
+# Priors
+	## Detection model
+    	bo ~ dnorm(0, 0.1) 		# vaguely-defined parameters
+    	bvoc ~ dnorm(0, 0.1) 	# vaguely-defined parameters
+    
+	## Detection/non-detection data
+    	for (i in 1:R) { 	# for each detection/non-detection of collared individual
+        	logitg[i] <- bo + bvoc * x.tilde[i] 	# logistic regression equal to intercept + coefficient*estimated voc
+        	g.tilde[i] <- exp(logitg[i])/(1 + exp(logitg[i]))
+        	z.tilde[i] ~ dbern(g.tilde[i])
+    }
+}
+    
