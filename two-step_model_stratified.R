@@ -39,11 +39,11 @@ runModel <- function(file_path) {
     library(runjags)
     library(splines)
     library(bayesplot)
-    
+
     wd <- getwd()
-    
+
     ## 1.2 Build functions ####
-    
+
     # Name_fixer converts misspelled or abbreviated EPU names to standard names
     name_fixer <- function(EPU_list, EPU_string) {
       output <- character(length(EPU_string))
@@ -57,7 +57,7 @@ runModel <- function(file_path) {
       }
       return(output)
     }
-    
+
     # Standard_survey standardizes survey types
     standard_survey <- function(survey_string) {
       output <- case_when(
@@ -70,7 +70,7 @@ runModel <- function(file_path) {
       )
       return(output)
     }
-    
+
     # compile_sheets binds all sheets in a file (filepath) that follow a certain naming patter (type)
     # E.g. to bind survey data sheets from all years, type should be "Data"
     compile_sheets <- function(filepath, type) {
@@ -84,7 +84,7 @@ runModel <- function(file_path) {
       }
       return(output)
     }
-    
+
     # oper.datify formats obs into oper.dat
     oper.datify <- function(df) {
       transmute(
@@ -95,22 +95,26 @@ runModel <- function(file_path) {
         q = 1,
         z = 1,
         yr = year.ID,
-        subunits = as.double(subunits),
+        subunit = as.double(subunit),
+        subunit.yr = as.double(subunit.yr),
+        plot = as.double(plot),
         survey.type = NULL
       )
     }
-    
+
     # augment adds augmented records to obs
     augment <- function(df) {
       aug <- df %>%
         # need to determine max annual m of each h
-        group_by(yr, h, subunits) %>%
+        group_by(yr, h, subunit, subunit.yr, plot) %>%
         summarize(m = n()) %>%
         ungroup() %>%
         group_by(h) %>%
         reframe(
           yr = yr,
-          subunits = subunits,
+          subunit = subunit,
+          subunit.yr = subunit.yr,
+          plot = plot,
           m = m,
           m.max = max(m)
         ) %>%
@@ -128,30 +132,32 @@ runModel <- function(file_path) {
           q = NA,
           z = 0,
           yr = yr,
-          subunits = subunits,
+          subunit = subunit,
+          subunit.yr = subunit.yr,
+          plot = plot,
           .keep = "none"
         ) %>%
         ungroup()
       # combine dataframes
       output <- rbind(df, oper.dat.aug) %>%
-        arrange(yr, subunits, h, desc(z))
+        arrange(yr, subunit, h, desc(z))
       return(output)
     }
-    
+
     # plot.datify formats oper.dat for plot.dat
     plot.datify <- function(df) {
       df %>%
-        select(yr, h, subunits) %>%
+        select(yr, h, subunit) %>%
         distinct() %>%
         mutate(
           h.plots = h,
           yr.plots = yr,
-          subunits.plots = subunits
+          subunit.plots = subunit
         ) %>%
-        select(h.plots, yr.plots, subunits.plots) %>%
-        arrange(yr.plots, subunits.plots, h.plots)
+        select(h.plots, yr.plots, subunit.plots) %>%
+        arrange(yr.plots, subunit.plots, h.plots)
     }
-    
+
     # scalar.datify creates the scalar.dat file from oper.dat, plot.dat, and sight.dat
     scalar.datify <- function(operdat, plotdat, sightdat) {
       if (!is.null(plotdat$h.plots)) {
@@ -163,7 +169,7 @@ runModel <- function(file_path) {
             operdat %>% filter(
               yr == plotdat$yr.plots[i],
               h == plotdat$h.plots[i],
-              subunits == plotdat$subunits.plots[i]
+              subunit == plotdat$subunit.plots[i]
             )
           ))
         colnames(output)[i] <-
@@ -173,7 +179,7 @@ runModel <- function(file_path) {
             "y",
             plotdat$yr.plots[i],
             "sub",
-            plotdat$subunits.plots[i]
+            plotdat$subunit.plots[i]
           )
       }
       } else {
@@ -184,7 +190,7 @@ runModel <- function(file_path) {
             as.double(nrow(
               operdat %>% filter(
                 yr == plotdat$yr.plots[i],
-                subunits == plotdat$subunits.plots[i]
+                subunit == plotdat$subunit.plots[i]
               )
             ))
           colnames(output)[i] <-
@@ -192,20 +198,20 @@ runModel <- function(file_path) {
               "y",
               plotdat$yr.plots[i],
               "sub",
-              plotdat$subunits.plots[i]
+              plotdat$subunit.plots[i]
             )
         }
       }
-      
+
       output <- output %>%
         mutate(
           R = as.double(nrow(sightdat)),
           Ngroups = as.double(nrow(operdat)),
-          Nsubunits.yr = as.double(nrow(plotdat))
+          Nsubunit.yr = as.double(nrow(plotdat))
         )
       return(output)
     }
-    
+
     # scalar.sumsify creates the scalar.sums file from plot.dat and scalar.dat
     scalar.sumsify <- function(plotdat, scalardat) {
       # Create scalar.sums to ease modelling
@@ -218,7 +224,7 @@ runModel <- function(file_path) {
       }
       return(output)
     }
-    
+
     # rjags_to_table turns the rjags object into a readable table
     rjags_to_table <-
       function(jagsoutput,
@@ -228,8 +234,8 @@ runModel <- function(file_path) {
                EPU.ID,
                stratum_list) {
         jags.summary <- as.data.frame(jagsoutput$BUGSoutput$summary)
-        
-        tau.jags <- matrix(NA, (nrow(jags.summary) - 1), 11)
+
+        tau.jags <- matrix(NA, (nrow(jags.summary) - 3), 11)
         tau.jags <- as.data.frame(tau.jags)
         tau.jags[, 1] <-
           c(as.numeric(str_extract(colnames(scalardat)[1:length(jagsoutput$BUGSoutput$median$tau.hat)], "(?<=sub)[:digit:]{1,2}")),
@@ -240,17 +246,17 @@ runModel <- function(file_path) {
         tau.jags[, 3] <-
           c(as.numeric(str_extract(colnames(scalardat)[1:length(jagsoutput$BUGSoutput$median$tau.hat)], "(?<=y)[:digit:]{1,2}")),
             as.numeric(str_extract(colnames(totalscalardat)[1:length(jagsoutput$BUGSoutput$median$total.tau.hat)], "(?<=y)[:digit:]{1,2}")))
-        tau.jags[, 4] <- round(jags.summary$`50%`[2:nrow(jags.summary)])
-        tau.jags[, 5] <- round(jags.summary$`2.5%`[2:nrow(jags.summary)])
-        tau.jags[, 6] <- round(jags.summary$`97.5%`[2:nrow(jags.summary)])
-        tau.jags[, 7] <- round(jags.summary$`25%`[2:nrow(jags.summary)])
-        tau.jags[, 8] <- round(jags.summary$`75%`[2:nrow(jags.summary)])
-        tau.jags[, 9] <- round(jags.summary$Rhat[2:nrow(jags.summary)], 3)
+        tau.jags[, 4] <- round(jags.summary$`50%`[4:nrow(jags.summary)])
+        tau.jags[, 5] <- round(jags.summary$`2.5%`[4:nrow(jags.summary)])
+        tau.jags[, 6] <- round(jags.summary$`97.5%`[4:nrow(jags.summary)])
+        tau.jags[, 7] <- round(jags.summary$`25%`[4:nrow(jags.summary)])
+        tau.jags[, 8] <- round(jags.summary$`75%`[4:nrow(jags.summary)])
+        tau.jags[, 9] <- round(Rhat[4:nrow(jags.summary)], 3)
         tau.jags[, 10] <-
-          round(jags.summary$sd[2:nrow(jags.summary)] / jags.summary$mean[2:nrow(jags.summary)], 3)
+          round(jags.summary$sd[4:nrow(jags.summary)] / jags.summary$mean[4:nrow(jags.summary)], 3)
         tau.jags[, 11] <-
-          as.numeric(jags.summary$n.eff[2:nrow(jags.summary)])
-        
+          as.numeric(n.eff[4:nrow(jags.summary)])
+
         colnames(tau.jags) <-
           c(
             "subunit.ID",
@@ -271,18 +277,18 @@ runModel <- function(file_path) {
           mutate(stratum = if_else(stratum.ID==0, "total", stratum)) %>%
           select(-year.ID,-stratum.ID,-subunit.ID) %>%
           select(year, EPU, stratum, Model:n.eff)
-        
+
         return(output)
       }
-    
+
     ## 1.3 Load data ####
-    
+
     # Save EPU names from reliable source
     EPU_list <- read_excel(file_path, sheet = "EPU_list") %>%
       # fill in abbreviations as full names when missing
       mutate(abbr = if_else(is.na(abbr), EPU, abbr))
     EPU_names <- unique(EPU_list$EPU)
-    
+
     # Extract observations from all years
     # If you didn't name your survey data sheets with "Data", replace below
     obs.all <- compile_sheets(file_path, "\\d{4} Data")
@@ -290,7 +296,7 @@ runModel <- function(file_path) {
     # if(sum(duplicated(obs.all)) > 20*length(unique(obs.all$year))){
     #   cat("Warning: ", sum(duplicated(obs.all)), " duplicate rows in dataset. Make sure you only have one `Data` sheet per year.\n")
     # }
-    
+
     # fix EPU names
     obs.all$EPU <- name_fixer(EPU_list, obs.all$EPU)
     # warning when a bunch of EPUs are not in EPU_list
@@ -299,12 +305,12 @@ runModel <- function(file_path) {
     # }
     # fix survey types
     obs.all$survey.type <- standard_survey(obs.all$survey.type)
-    
+
     # Bring in summary data from each year
     # This acts as a list of all the EPUs that were properly surveyed that year
     eff <- compile_sheets(file_path, "\\d{4} Summary") %>%
       filter(!is.na(min_count))
-    
+
     # throw an error if there are an unequal amount of data and summary sheets
     if(length(setdiff(unique(obs.all$year), unique(eff$year))) > 0){
       stop("Data or summary sheet missing for ", setdiff(unique(obs.all$year), unique(eff$year))[1], ". Make sure you include both sheets for each year.")
@@ -316,13 +322,13 @@ runModel <- function(file_path) {
     if(nrow(eff[eff$EPU=="",]) > 1){
       stop("Not all EPUs listed in summary sheets are represented in EPU_list sheet. Please check your EPU_list.\n")
     }
-    
+
     ## 1.4 Sightability dataset ####
-    
+
     # we will have one sightability dataframe for all sexes/ages, which means we're assuming
     # equal sightability of bulls, cows, and calves -> may not be true.
     # cows/bulls could be stratified in the future but for now we don't have enough collared bulls
-    
+
     sight <- obs.all %>%
       # we'll create a field to tell us whether each year counts toward sightability data
       group_by(year) %>%
@@ -337,15 +343,15 @@ runModel <- function(file_path) {
              collars > 0,
              # remove any rows that didn't pass the name check
              EPU != "")
-    
+
     # if there is no sightability data, throw an error
     if (nrow(sight) == 0) {
       stop("No sightability data detected. Make sure you have inventory AND telemetry observations in at least one year.\n", call.=F, domain = NA)
     }
-    
+
     # duplicate observations with >1 collars
     sight.dup <- head(sight, 0)
-    
+
     for (i in seq_along(sight$collars)) {
       if (sight$collars[i] > 1) {
         for (k in 2:sight$collars[i]) {
@@ -353,13 +359,13 @@ runModel <- function(file_path) {
         }
       }
     }
-    
+
     if (nrow(sight.dup) > 0) {
       sight <- bind_rows(sight, sight.dup)
     }
-    
+
     ## 1.5 Observational dataset ####
-    
+
     # make sure we're only keeping data from EPUs with summary data that year
     obs <-
       inner_join(obs.all, eff %>% select(year, EPU), by = c("EPU", "year")) %>%
@@ -377,9 +383,9 @@ runModel <- function(file_path) {
                survey.type == "Capture" | survey.type == "Telemetry") %>%
       # then turn any "capture" to "inventory"
       mutate(survey.type = if_else(survey.type == "Capture", "Inventory", survey.type))
-    
+
     # make sure all totals = sum of cows, calves, etc
-    
+
     obs <- obs %>%
       mutate(
         UC = if_else(
@@ -389,9 +395,9 @@ runModel <- function(file_path) {
         ),
         total = as.numeric(cow + calf + spike + bull + UC)
       )
-    
+
     ### 1.5.1 Observed dataset ####
-    
+
     observed <- obs %>%
       rename("EPU" = "subunit") %>%
       group_by(year, EPU) %>%
@@ -401,93 +407,50 @@ runModel <- function(file_path) {
                 calves_observed = sum(calf),
                 unclassified_observed = sum(UC),
                 total_observed = sum(total))
-    
+
     ## 1.6 Effort ####
-    
+
     # Amend EPU.list to only include surveyed EPUs, then assign ID numbers
     EPU.ID <- data.frame(EPU = unique(obs$subunit)) %>%
       mutate(ID = seq(1, length(EPU), 1))
-    
+
     eff <- inner_join(eff, EPU.ID, by = "EPU")
-    
+
     # Add ID to obs
-    
+
     # convert sex/age to stratum
     obs <- obs %>%
       pivot_longer(cow:total, names_to = "stratum", values_to = "y") %>%
       filter(y > 0,
              # remove total stratum - final numbers will be sums of all classes
              stratum != "total")
-    
+
     stratum.ID <- obs %>%
       select(stratum) %>%
       distinct()
     stratum.ID$h <- seq(1:nrow(stratum.ID))
-    
+
     obs <- obs %>%
       left_join(stratum.ID, by = "stratum")
-    
+
     obs <-
       inner_join(obs, eff %>% select(year, EPU, ID), by = c(c("subunit" = "EPU"), "year")) %>%
-      mutate(subunits = ID,
+      mutate(subunit = ID,
              .keep = "unused")
-    
+
+    # Finally, remove telemetry detections from detection-only dataset
     obs <- obs %>% filter(survey.type!="Telemetry")
-    
-    # ## 1.7 Telem adjustment ####
-    # #including telemetry obs helps some EPUs but hurts others -> depends on effect on average group size
-    # 
-    # group <- obs %>%
-    #   group_by(subunit, stratum) %>%
-    #   summarize(avg_group = mean(y))
-    # 
-    # # if keeping telems brings avg groupsize closer to EPU's total average, then keep them
-    # telem.stats <- obs %>%
-    #   ungroup() %>%
-    #   group_by(year, subunit, stratum, survey.type) %>%
-    #   summarize(n = n(),
-    #             count = sum(y)) %>%
-    #   ungroup() %>%
-    #   pivot_wider(names_from = survey.type,
-    #               values_from = c(n, count)) %>%
-    #   mutate(
-    #     n_telem = replace_na(n_Telemetry, 0),
-    #     n_nontelem = replace_na(n_Inventory, 0),
-    #     count_telem = replace_na(count_Telemetry, 0),
-    #     count_nontelem = replace_na(count_Inventory, 0),
-    #     .keep = "unused"
-    #   ) %>%
-    #   filter(count_telem > 0) %>%
-    #   mutate(
-    #     avg_group_nontelem = (count_nontelem / n_nontelem),
-    #     avg_group_telem = (count_telem + count_nontelem) / (n_telem + n_nontelem)
-    #   ) %>%
-    #   left_join(group, by = c("subunit", "stratum")) %>%
-    #   mutate(keep_telem = if_else(
-    #     abs(avg_group_telem - avg_group) >= abs(avg_group_nontelem - avg_group),
-    #     F,
-    #     T
-    #   ))
-    # 
-    # # add telem direction to obs
-    # obs <-
-    #   left_join(
-    #     obs,
-    #     telem.stats %>% select(year, subunit, stratum, keep_telem),
-    #     by = c("year", "subunit", "stratum")
-    #   ) %>%
-    #   filter(!(survey.type == "Telemetry" & keep_telem == F))
-    
+
     # 2 PREPARE DATA -------------------------------------------------------------
-    
+
     ## 2.1 Sight.dat ####
-    
+
     # s = habitat indicator (Mature foest, young forest, non-forest)
     # x = visual obstruction measurements associated with the test trial data used to develop the sightability model
     # a = activity indicator (bedded, standing/moving)
     # z = detection indicator (1 if the group was observed, 0 otherwise)
     # t = group size
-    
+
     sight.dat <- sight %>%
       mutate(observed = as.integer(if_else(survey.type == "Inventory", 1, 0)),
              grpsize = as.integer(total))  %>%
@@ -518,7 +481,7 @@ runModel <- function(file_path) {
         z.tilde = as.double(observed)
       ) %>%
       select(a, s, t, x.tilde, z.tilde)
-    
+
     ### 2.1.1 test correlations ####
     # UNCOMMENT BELOW IF YOU WANT TO TEST THE CORRELATION OF GROUP SIZE, HABITAT, ACTIVITY, VOC WITH SIGHTABILITY
     # cor.sum <- sight.dat %>%
@@ -534,11 +497,11 @@ runModel <- function(file_path) {
     #   scale_fill_brewer(palette = "Paired") +
     #   xlab("") +
     #   theme_classic() +
-    #   theme(legend.position="none", 
+    #   theme(legend.position="none",
     #         axis.title.y = element_text(size = 14, margin = margin(0,10,0,0)),
     #         axis.text.y = element_text(size = 12),
     #         axis.text.x = element_text(size = 14, color="black"))
-    # 
+    #
     # # Group size plot
     # ggplot(sight.dat %>% filter(!is.na(t)) %>% rename ("Group size" = t) %>% mutate(z.tilde = if_else(z.tilde==1, "Seen", "Missed")), aes(as.factor(z.tilde), `Group size`)) +
     #   geom_boxplot(aes(fill = z.tilde)) +
@@ -547,13 +510,13 @@ runModel <- function(file_path) {
     #   xlab("") +
     #   scale_fill_brewer(palette = "Paired") +
     #   theme_classic() +
-    #   theme(legend.position="none", 
+    #   theme(legend.position="none",
     #         axis.title.y = element_text(size = 14, margin = margin(0,10,0,0)),
     #         axis.text.y = element_text(size = 12),
     #         axis.text.x = element_text(size = 14, color="black"))
-    # 
+    #
     # # Habitat plot
-    # 
+    #
     # sight.prop <- sight.dat %>%
     #   filter(!is.na(s)) %>%
     #   group_by(z.tilde) %>%
@@ -582,9 +545,9 @@ runModel <- function(file_path) {
     #     legend.text = element_text(size = 12, color = "grey30"),
     #     legend.title = element_text(size = 14)
     #   )
-    # 
+    #
     # # Activity plot
-    # 
+    #
     # sight.prop <- sight.dat %>%
     #   filter(!is.na(a)) %>%
     #   group_by(z.tilde) %>%
@@ -597,7 +560,7 @@ runModel <- function(file_path) {
     #   mutate(prop = n.a/n.z,
     #          z.tilde = if_else(z.tilde == 1, "Seen", "Missed")) %>%
     #   rename("Activity" = a)
-    # 
+    #
     # ggplot(sight.prop.a, mapping = aes(as.factor(z.tilde), prop)) +
     #   geom_col(aes(fill=Activity), color = "grey30", position = "dodge") +
     #   scale_y_continuous(labels = scales::percent) +
@@ -609,19 +572,19 @@ runModel <- function(file_path) {
     #         axis.text.x = element_text(size = 14, color = "black"),
     #         legend.text = element_text(size = 12, color = "grey30"),
     #         legend.title = element_text(size = 14))
-    # 
+    #
     # x.z <- t.test(sight.dat$x.tilde[sight.dat$z.tilde==0], sight.dat$x.tilde[sight.dat$z.tilde==1])
     # t.z <- t.test(sight.dat$t[sight.dat$z.tilde==0 & !is.na(sight.dat$t)], sight.dat$t[sight.dat$z.tilde==1 & !is.na(sight.dat$t)])
     # a.z <- chisq.test(table(sight.dat$a, sight.dat$z.tilde))
     # s.z <- chisq.test(table(sight.dat$s, sight.dat$z.tilde))
-    # 
+    #
     # Correlation <- as.data.frame(matrix(NA, 4, 5))
     # Correlation[1,] <- c("VOC", x.z$method, x.z$statistic, x.z$parameter, x.z$p.value)
     # Correlation[2,] <- c("Group size", t.z$method, t.z$statistic, t.z$parameter, t.z$p.value)
     # Correlation[3,] <- c("Activity", a.z$method, a.z$statistic, a.z$parameter, a.z$p.value)
     # Correlation[4,] <- c("Habitat", s.z$method, s.z$statistic, s.z$parameter, s.z$p.value)
     # colnames(Correlation) <- c("Variable", "Method", "Statistic", "DF", "p")
-    # 
+    #
     # write.csv(Correlation, "C:/Users/TBRUSH/R/SightabilityModels/output/Correlation.csv", row.names = FALSE)
     # write.csv(sight.dat, "C:/Users/TBRUSH/R/SightabilityModels/output/Sightability_2023.csv", row.names = FALSE)
 
@@ -630,53 +593,69 @@ runModel <- function(file_path) {
     sight.dat <- sight.dat %>% select(x.tilde, z.tilde) %>%
       filter(!is.na(x.tilde)) %>%
       ungroup()
-    
+
     ## 2.2 Oper.dat ####
-    
+
     ### 2.2.1 non-augmented data ####
-    
+
     # Get year ID
     year.ID <- as.data.frame(matrix(NA, length(unique(obs$year)), 2))
     colnames(year.ID) <- c("year", "year.ID")
-    
+
     year.ID[, 1] <- unique(obs$year) %>% sort()
     year.ID[, 2] <- seq(1, length(unique(obs$year)))
+
+    # Get subunit.yr ID
+    subunit.yr.ID <- obs %>%
+      select(year, subunit) %>%
+      distinct()
+
+    subunit.yr.ID$subunit.yr <- seq(1:nrow(subunit.yr.ID))
     
+    # Get plot ID
+    plot.ID <- obs %>%
+      select(year, h, subunit) %>%
+      distinct()
+    
+    plot.ID$plot <- seq(1:nrow(plot.ID))
+
     # join to oper.dat
     oper.dat <- left_join(obs, year.ID, by = "year")
-    
+    oper.dat <- left_join(oper.dat, subunit.yr.ID, by = c("year", "subunit"))
+    oper.dat <- left_join(oper.dat, plot.ID, by = c("year", "h", "subunit"))
+
     # organize non-augmented data
     oper.dat <- oper.dat %>%
       # model won't accept voc = 0 or 1, fix below
       mutate(voc = if_else(voc == 1, 0.99,
                            if_else(voc == 0, 0.01, voc)))
-    
+
     oper.dat <- oper.dat %>%
       oper.datify()
-    
+
     ### 2.2.2 augmented data ####
-    
+
     oper.dat <- oper.dat %>%
       augment()
-    
+
     ## 2.3 Plot.dat ####
-    
+
     plot.dat <- oper.dat %>%
       plot.datify()
-    
+
     total.plot.dat <- plot.dat %>%
       select(-h.plots) %>%
       distinct()
-    
+
     ## 2.4 Scalar.dat and sums ####
     scalar.dat <- scalar.datify(oper.dat, plot.dat, sight.dat)
     total.scalar.dat <- suppressWarnings(scalar.datify(oper.dat, total.plot.dat, sight.dat))
-    
+
     # Create scalar.sums to ease modelling
     # tells us how many rows belong to each year/stratum combo
     scalar.sums <- scalar.sumsify(plot.dat, scalar.dat)
     total.scalar.sums <- scalar.sumsify(total.plot.dat, total.scalar.dat)
-    
+
     ## 2.5 Save inputs ####
     # JAGS inputs
     jags_input_names <-
@@ -723,56 +702,62 @@ runModel <- function(file_path) {
     
     rm(list = setdiff(ls(), files_to_keep))
     
-    # 3 MODEL ---------------------------------------------------------
+    # 3 BAYESIAN ANALYSIS ---------------------------------------------------------
     
     ## 3.1 Set parameters ####
     
+    # specify initial values
+    inits <-  function()
+      list(bo = runif(1), bvoc = runif(1))
+    
+    # Parameters monitored
     params_sightdata <- c("bo", "bvoc")
     params <- c("tau.hat", "total.tau.hat")
-    
-    ## 3.2 Bundle data ####
-    # Sightability data
-    sight.bundle.dat <-
-      list(
-        x.tilde = sight.dat$x.tilde,
-        z.tilde = sight.dat$z.tilde,
-        R = scalar.dat$R)
-    # Operational data
-    bundle.dat <-
-      list(
-        # oper.dat
-        x = oper.dat$x,
-        ym1 = oper.dat$ym1,
-        h = oper.dat$h,
-        q = oper.dat$q,
-        z = oper.dat$z,
-        yr = oper.dat$yr,
-        subunits = oper.dat$subunits,
-        # plot.dat
-        h.plots = plot.dat$h.plots,
-        yr.plots = plot.dat$yr.plots,
-        Nyears = length(unique(plot.dat$yr.plots)),
-        Nstrata = length(unique(plot.dat$h.plots)),
-        # scalar.dat
-        Ngroups = scalar.dat$Ngroups,
-        Nstrat.subunits.yr = scalar.dat$Nsubunits.yr,
-        Nsubunits.yr = total.scalar.dat$Nsubunits.yr,
-        Nsubunits = length(unique(plot.dat$subunits.plots)),
-        scalars = scalar.sums,
-        total.scalars = total.scalar.sums,
-        # spline data
-        splines = as.data.frame(ns(x = 1:(length(unique(plot.dat$yr.plots))+1), df = 3))
-      )
+  
+  ## 3.2 Bundle data ####
+  # Sightability data
+  sight.bundle.dat <-
+    list(
+      x.tilde = sight.dat$x.tilde,
+      z.tilde = sight.dat$z.tilde,
+      R = scalar.dat$R)  
+  # Operational data
+  bundle.dat <-
+    list(
+      # oper.dat
+      x = oper.dat$x,
+      ym1 = oper.dat$ym1,
+      h = oper.dat$h,
+      q = oper.dat$q,
+      z = oper.dat$z,
+      yr = oper.dat$yr,
+      subunit = oper.dat$subunit,
+      plot = oper.dat$plot,
+      # plot.dat
+      h.plots = plot.dat$h.plots,
+      yr.plots = plot.dat$yr.plots,
+      Nyears = length(unique(plot.dat$yr.plots)),
+      Nstrata = length(unique(plot.dat$h.plots)),
+      Nsubunits = length(unique(plot.dat$subunit.plots)),
+      # scalar.dat
+      Ngroups = scalar.dat$Ngroups,
+      Nstrata.subunit.yr = scalar.dat$Nsubunit.yr,
+      Nsubunit.yr = total.scalar.dat$Nsubunit.yr,
+      scalars = scalar.sums,
+      total.scalars = total.scalar.sums,
+      # spline data
+      splines = as.data.frame(ns(x = 1:(length(unique(plot.dat$yr.plots))+1), df = 3))
+    )
     
     ## 3.3 Prepare for looping ####
     nloops <- 75
-
+    
     # MCMC settings (oper model)
     ni <- 3000
     nt <- 2
     nb <- 2000
     nc <- 2
-    
+
     # record any error messages that occured since tryCatch()
   }, error = function(e) {
     # Print the error message
@@ -780,8 +765,7 @@ runModel <- function(file_path) {
   })
   
   # finish sinking to errors.txt
-  sink()
-    
+  sink()    
     
     ## 3.4 Run sightability model ####
     # write to progress.txt
@@ -1002,10 +986,6 @@ runModel <- function(file_path) {
   
   ## 4.3 Write CSV ####
   
-  sink("progress.txt", append = T)
-  cat("\nResults ready! File will start downloading shortly.\n",)
-  sink()
-  
   write_csv(results.long,
             paste0(
               getwd(),
@@ -1013,6 +993,12 @@ runModel <- function(file_path) {
               format(Sys.time(), "%Y%b%d_%H%M"),
               ".csv"
             ))
+  
+  # update progress
+  sink("progress.txt", append = T)
+  cat("\nResults ready!\n\nFile will start downloading shortly.\n",
+      sep = "")
+  sink()
   
   # mark as done
   sink("done.txt")

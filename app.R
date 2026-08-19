@@ -252,11 +252,11 @@ server <- function(input, output, session) {
   # Show script status
   output$script_status <- renderUI({
     if (rv$running) {
-      status <- "Script running..."
+      status <- "\nScript running..."
     } else if (rv$error) {
-      status <- "Error"
+      status <- "\nError"
     } else if (rv$done) {
-      status <- "Script finished running! Check your downloads for the results file."
+      status <- "\nScript finished running! Check your downloads for the results file."
     } else {
       status <- ""
     }
