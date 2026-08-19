@@ -6,7 +6,7 @@ start_time <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
 
 # get uploaded file
 file_path <- paste0(commandArgs(trailingOnly = TRUE))
-# file_path <- "input/2021_to_2023_data.xlsx"
+# file_path <- "input/2016_to_2023_data.xlsx"
 # file_path <- "input/sightability_WCR_elk_2020-2024_May29_2024.xlsx"
 
 runModel <- function(file_path) {
@@ -95,7 +95,9 @@ runModel <- function(file_path) {
         q = 1,
         z = 1,
         yr = year.ID,
-        subunits = as.double(subunits),
+        subunit = as.double(subunit),
+        subunit.yr = as.double(subunit.yr),
+        plot = as.double(plot),
         survey.type = NULL
       )
     }
@@ -104,13 +106,15 @@ runModel <- function(file_path) {
     augment <- function(df) {
       aug <- df %>%
         # need to determine max annual m of each h
-        group_by(yr, h, subunits) %>%
+        group_by(yr, h, subunit, subunit.yr, plot) %>%
         summarize(m = n()) %>%
         ungroup() %>%
         group_by(h) %>%
         reframe(
           yr = yr,
-          subunits = subunits,
+          subunit = subunit,
+          subunit.yr = subunit.yr,
+          plot = plot,
           m = m,
           m.max = max(m)
         ) %>%
@@ -128,28 +132,30 @@ runModel <- function(file_path) {
           q = NA,
           z = 0,
           yr = yr,
-          subunits = subunits,
+          subunit = subunit,
+          subunit.yr = subunit.yr,
+          plot = plot,
           .keep = "none"
         ) %>%
         ungroup()
       # combine dataframes
       output <- rbind(df, oper.dat.aug) %>%
-        arrange(yr, subunits, h, desc(z))
+        arrange(yr, subunit, h, desc(z))
       return(output)
     }
 
     # plot.datify formats oper.dat for plot.dat
     plot.datify <- function(df) {
       df %>%
-        select(yr, h, subunits) %>%
+        select(yr, h, subunit) %>%
         distinct() %>%
         mutate(
           h.plots = h,
           yr.plots = yr,
-          subunits.plots = subunits
+          subunit.plots = subunit
         ) %>%
-        select(h.plots, yr.plots, subunits.plots) %>%
-        arrange(yr.plots, subunits.plots, h.plots)
+        select(h.plots, yr.plots, subunit.plots) %>%
+        arrange(yr.plots, subunit.plots, h.plots)
     }
 
     # scalar.datify creates the scalar.dat file from oper.dat, plot.dat, and sight.dat
@@ -163,7 +169,7 @@ runModel <- function(file_path) {
             operdat %>% filter(
               yr == plotdat$yr.plots[i],
               h == plotdat$h.plots[i],
-              subunits == plotdat$subunits.plots[i]
+              subunit == plotdat$subunit.plots[i]
             )
           ))
         colnames(output)[i] <-
@@ -173,7 +179,7 @@ runModel <- function(file_path) {
             "y",
             plotdat$yr.plots[i],
             "sub",
-            plotdat$subunits.plots[i]
+            plotdat$subunit.plots[i]
           )
       }
       } else {
@@ -184,7 +190,7 @@ runModel <- function(file_path) {
             as.double(nrow(
               operdat %>% filter(
                 yr == plotdat$yr.plots[i],
-                subunits == plotdat$subunits.plots[i]
+                subunit == plotdat$subunit.plots[i]
               )
             ))
           colnames(output)[i] <-
@@ -192,7 +198,7 @@ runModel <- function(file_path) {
               "y",
               plotdat$yr.plots[i],
               "sub",
-              plotdat$subunits.plots[i]
+              plotdat$subunit.plots[i]
             )
         }
       }
@@ -201,7 +207,7 @@ runModel <- function(file_path) {
         mutate(
           R = as.double(nrow(sightdat)),
           Ngroups = as.double(nrow(operdat)),
-          Nsubunits.yr = as.double(nrow(plotdat))
+          Nsubunit.yr = as.double(nrow(plotdat))
         )
       return(output)
     }
@@ -429,7 +435,7 @@ runModel <- function(file_path) {
 
     obs <-
       inner_join(obs, eff %>% select(year, EPU, ID), by = c(c("subunit" = "EPU"), "year")) %>%
-      mutate(subunits = ID,
+      mutate(subunit = ID,
              .keep = "unused")
 
     # Finally, remove telemetry detections from detection-only dataset
@@ -491,7 +497,7 @@ runModel <- function(file_path) {
     #   scale_fill_brewer(palette = "Paired") +
     #   xlab("") +
     #   theme_classic() +
-    #   theme(legend.position="none", 
+    #   theme(legend.position="none",
     #         axis.title.y = element_text(size = 14, margin = margin(0,10,0,0)),
     #         axis.text.y = element_text(size = 12),
     #         axis.text.x = element_text(size = 14, color="black"))
@@ -504,7 +510,7 @@ runModel <- function(file_path) {
     #   xlab("") +
     #   scale_fill_brewer(palette = "Paired") +
     #   theme_classic() +
-    #   theme(legend.position="none", 
+    #   theme(legend.position="none",
     #         axis.title.y = element_text(size = 14, margin = margin(0,10,0,0)),
     #         axis.text.y = element_text(size = 12),
     #         axis.text.x = element_text(size = 14, color="black"))
@@ -598,10 +604,26 @@ runModel <- function(file_path) {
 
     year.ID[, 1] <- unique(obs$year) %>% sort()
     year.ID[, 2] <- seq(1, length(unique(obs$year)))
+
+    # Get subunit.yr ID
+    subunit.yr.ID <- obs %>%
+      select(year, subunit) %>%
+      distinct()
+
+    subunit.yr.ID$subunit.yr <- seq(1:nrow(subunit.yr.ID))
     
+    # Get plot ID
+    plot.ID <- obs %>%
+      select(year, h, subunit) %>%
+      distinct()
+    
+    plot.ID$plot <- seq(1:nrow(plot.ID))
+
     # join to oper.dat
     oper.dat <- left_join(obs, year.ID, by = "year")
-    
+    oper.dat <- left_join(oper.dat, subunit.yr.ID, by = c("year", "subunit"))
+    oper.dat <- left_join(oper.dat, plot.ID, by = c("year", "h", "subunit"))
+
     # organize non-augmented data
     oper.dat <- oper.dat %>%
       # model won't accept voc = 0 or 1, fix below
@@ -712,18 +734,19 @@ runModel <- function(file_path) {
       q = oper.dat$q,
       z = oper.dat$z,
       yr = oper.dat$yr,
-      subunits = oper.dat$subunits,
+      subunit = oper.dat$subunit,
+      plot = oper.dat$plot,
       # plot.dat
       h.plots = plot.dat$h.plots,
       yr.plots = plot.dat$yr.plots,
       Nyears = length(unique(plot.dat$yr.plots)),
       Nstrata = length(unique(plot.dat$h.plots)),
+      Nsubunits = length(unique(plot.dat$subunit.plots)),
       # scalar.dat
       R = scalar.dat$R,
       Ngroups = scalar.dat$Ngroups,
-      Nstrat.subunits.yr = scalar.dat$Nsubunits.yr,
-      Nsubunits.yr = total.scalar.dat$Nsubunits.yr,
-      Nsubunits = length(unique(plot.dat$subunits.plots)),
+      Nstrata.subunit.yr = scalar.dat$Nsubunit.yr,
+      Nsubunit.yr = total.scalar.dat$Nsubunit.yr,
       scalars = scalar.sums,
       total.scalars = total.scalar.sums,
       # spline data
