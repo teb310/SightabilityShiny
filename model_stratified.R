@@ -696,15 +696,6 @@ runModel <- function(file_path) {
     nt <- 2
     nb <- ni / 2
     nc <- 3
-    
-    # record any error messages that occured since tryCatch()
-  }, error = function(e) {
-    # Print the error message
-    cat("Error message:", e$message, "\n")
-  })
-  
-  # finish sinking to errors.txt
-  sink()
   
   ## 3.2 Run the model ####
   
@@ -739,7 +730,14 @@ runModel <- function(file_path) {
       splines = as.data.frame(ns(x = 1:(length(unique(plot.dat$yr.plots))+1), df = 3))
     )
 
+    # record any error messages that occured since tryCatch()
+  }, error = function(e) {
+    # Print the error message
+    cat("Error message:", e$message, "\n")
+  })
   
+  # finish sinking to errors.txt
+  sink()
       
   # sink all progress to progress.txt
   sink("progress.txt")
