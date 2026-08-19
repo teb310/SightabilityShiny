@@ -27,35 +27,25 @@ model
     }
     
 # Priors for psi
-	## Coefficients are vaguely defined (normal about zero)
-      	b0psi ~ dnorm(0,0.04)
+	## Coefficients are vaguely defined (normal about zero) - 1 for each spline
       	b1psi ~ dnorm(0,0.04)
       	b2psi ~ dnorm(0,0.04)
       	b3psi ~ dnorm(0,0.04)
-      	b4psi ~ dnorm(0,0.04)
-      	b5psi ~ dnorm(0,0.04)
-      	b6psi ~ dnorm(0,0.04)
-	b7psi ~ dnorm(0,0.04)
 
-	## We need 4 dummy variables because we have 5 strata (calf, spike, bull, cow, unclassified)
-      	dummy1h <- c(1,0,0,0,0)
-      	dummy2h <- c(0,1,0,0,0)
-      	dummy3h <- c(0,0,1,0,0)
-      	dummy4h <- c(0,0,0,1,0)
-	dummy5h <- c(0,0,0,0,1)
+
+	## We need dummy variables for each stratum
+	for(i in 1:Nstrata){
+		b_strata[i] ~ dnorm(0,0.04)
+	}
 
 
   for(k in 1:Nyears){
     for(i in 1:Nstrata){ 	# for each stratum-year
       logit.mu[i,k] <- 		# mean probability of inclusion in population 
-        b0psi*dummy1h[i] + 	# stratum-specific intercept
+        b_strata[i] + 	# stratum-specific intercept
         b1psi*splines[k,1] + 	# basis vector from natural cubic spline
         b2psi*splines[k,2] + 	# basis vector from natural cubic spline
-        b3psi*splines[k,3] + 	# basis vector from natural cubic spline
-        b4psi*dummy2h[i] + 	# stratum-specific intercept
-        b5psi*dummy3h[i] + 	# stratum-specific intercept
-	b6psi*dummy4h[i] +	# stratum-specific intercept
-	b7psi*dummy5h[i] 	# stratum-specific intercept
+        b3psi*splines[k,3] 	# basis vector from natural cubic spline
 
 	## Hyperpriors for alpha psi and beta psi
       	mu.psi[i,k] <- exp(logit.mu[i,k])/(1+exp(logit.mu[i,k]))
