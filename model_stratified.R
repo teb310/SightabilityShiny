@@ -752,7 +752,7 @@ runModel <- function(file_path) {
     jags(bundle.dat,
          inits,
          params,
-         "www/beta_binom_model_elk2024.txt",
+         "www/beta_binom_model_elk2026.txt",
          nc,
          ni,
          nb,
