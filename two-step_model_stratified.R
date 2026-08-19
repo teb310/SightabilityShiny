@@ -711,22 +711,19 @@ runModel <- function(file_path) {
       list(bo = runif(1), bvoc = runif(1))
     
     # Parameters monitored
-    params <- c("bo", "bvoc", "tau.hat", "total.tau.hat")
-    
-    # MCMC settings
-    ni <- 800
-    nt <- 2
-    nb <- ni / 2
-    nc <- 3
+    params_sightdata <- c("bo", "bvoc")
+    params <- c("tau.hat", "total.tau.hat")
   
-  ## 3.2 Run the model ####
-  
-  # All data
-  bundle.dat <-
+  ## 3.2 Bundle data ####
+  # Sightability data
+  sight.bundle.dat <-
     list(
-      #sight.dat
       x.tilde = sight.dat$x.tilde,
       z.tilde = sight.dat$z.tilde,
+      R = scalar.dat$R)  
+  # Operational data
+  bundle.dat <-
+    list(
       # oper.dat
       x = oper.dat$x,
       ym1 = oper.dat$ym1,
@@ -743,7 +740,6 @@ runModel <- function(file_path) {
       Nstrata = length(unique(plot.dat$h.plots)),
       Nsubunits = length(unique(plot.dat$subunit.plots)),
       # scalar.dat
-      R = scalar.dat$R,
       Ngroups = scalar.dat$Ngroups,
       Nstrata.subunit.yr = scalar.dat$Nsubunit.yr,
       Nsubunit.yr = total.scalar.dat$Nsubunit.yr,
@@ -752,6 +748,15 @@ runModel <- function(file_path) {
       # spline data
       splines = as.data.frame(ns(x = 1:(length(unique(plot.dat$yr.plots))+1), df = 3))
     )
+    
+    ## 3.3 Prepare for looping ####
+    nloops <- 75
+    
+    # MCMC settings (oper model)
+    ni <- 3000
+    nt <- 2
+    nb <- 2000
+    nc <- 2
 
     # record any error messages that occured since tryCatch()
   }, error = function(e) {
@@ -760,81 +765,96 @@ runModel <- function(file_path) {
   })
   
   # finish sinking to errors.txt
-  sink()
-      
-  # sink all progress to progress.txt
-  sink("progress.txt")
-  cat("Start time:", paste(start_time), "\n\n\n")
-  cat("Progress: 0% done \n", paste(format(Sys.time(), "%Y-%m-%d %H:%M:%S")), "\n", sep = "")
-  sink() 
-  
-  # run the first 2%
-  jags_output <-
-    jags(bundle.dat,
-         inits,
-         params,
-         "www/beta_binom_model_elk2026.txt",
-         nc,
-         ni,
-         nb,
-         nt)
-  
-  # n.eff and Rhat are only reported for the last update - we need to keep track for all updates and combine
-  n.eff <- jags_output$BUGSoutput$summary[,"n.eff"]
-  Rhat <- jags_output$BUGSoutput$summary[,"Rhat"]
-  
-  # continue sinking
-  sink("progress.txt")
-  
-  time_elapsed <-
-    as.numeric(difftime(Sys.time(), as.POSIXct(start_time), units = "secs"))
-  end_time <-
-    format(as.POSIXct(start_time) + (time_elapsed / 2 * 100),
-           "%Y-%m-%d %H:%M")
-  
-  cat("Start time:",
-      paste(start_time),
-      "\nEstimated end time:",
-      end_time,
-      "\n\n")
-  cat("Progress: 2% done \n", paste(format(Sys.time(), "%Y-%m-%d %H:%M:%S")), "\n", sep = "")
-  
-  sink()
-  
-  # run the rest of the model while sinking
-  i <- 2
-  for (i in 2:50) {
-    jags_output <- update(jags_output, ni, nt)
+  sink()    
     
-    # update n.eff and Rhat
-    n.eff <- n.eff + jags_output$BUGSoutput$summary[,"n.eff"]
-    Rhat <- Rhat + jags_output$BUGSoutput$summary[,"Rhat"]
-
+    ## 3.4 Run sightability model ####
+    # write to progress.txt
     sink("progress.txt")
+    cat("Start time:", paste(start_time), "\nModelling sightability...\n")
+    sink() 
     
+    JAGSsight <- jags.parallel(data = sight.bundle.dat,
+                               inits = NULL,
+                               parameters.to.save = params_sightdata,
+                               model.file = "www/beta_binom_model_elk2026_step1.txt",
+                               n.chains = 2,
+                               n.iter = 10000,
+                               n.burnin = 3000,
+                               n.thin = 1)
+    
+    sight.posteriors <- as.data.frame(JAGSsight$BUGSoutput$sims.list)
+    save(sight.posteriors, file = paste0("output/sight_results_", format(Sys.time(), "%Y%b%d_%H%M"),".rdata"))
+
+    # sample posteriors
+    sample.index <- sample(x = 1:nrow(sight.posteriors), size = nloops, replace = F)
+    bo_fromSight <- sight.posteriors$bo[sample.index]
+    bvoc_fromSight <- sight.posteriors$bvoc[sample.index]
+    
+    # update progress
+    sink("progress.txt")
+    cat("Start time:", paste(start_time), "\nSightability modelling complete!\n")
+    sink() 
+  
+    ## 3.5 Run TS model ####
+  
+    # update progress
+    sink("progress.txt")
+    cat("Sightability modelling complete!\nModelling abundance...\n")
+    start_time <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
+    cat("Start time:", paste(start_time), "\n\n\n")
+    cat("Progress: 0 of ", paste(nloops), " loops completed.\n", paste(format(Sys.time(), "%Y-%m-%d %H:%M:%S")), "\n", sep = "")
+    sink() 
+  
+  # start the loop
+    jags_output <- list()
+  for(ii in 1:nloops){
+    # Sample beta-hats from sightability model posteriors and add to bundle.dat
+    bundle.dat[["bo"]] <- bo_fromSight[ii]
+    bundle.dat[["bvoc"]] <- bvoc_fromSight[ii]
+    # run model
+    jags_output[[ii]] <- jags.parallel(bundle.dat,
+                                       inits = NULL,
+                                       params,
+                                       "www/beta_binom_model_elk2026_step2.txt",
+                                       nc,
+                                       ni,
+                                       nb,
+                                       nt)
+    # save temporary file
+    jags_output_names <- c("jags_output", "scalar.dat", "nloops", "ii")
+    jags_outputs <-
+      ls(pattern = paste0("^", paste(jags_output_names, collapse = "|")))
+    save(list = jags_outputs,
+         file = paste0(
+           "output/jags_output_tmp.rdata"
+         ))
+    # update progress
+    sink("progress.txt")
     time_elapsed <-
       as.numeric(difftime(Sys.time(), as.POSIXct(start_time), units = "secs"))
     end_time <-
-      format(as.POSIXct(start_time) + (time_elapsed / (i * 2) * 100),
+      format(as.POSIXct(start_time) + (time_elapsed / ii * nloops),
              "%Y-%m-%d %H:%M")
-    
+    cat("Sightability modelling complete!\nModelling abundance...\n")
     cat("Start time:",
         paste(start_time),
         "\nEstimated end time:",
         end_time,
         "\n\n")
-    
-    cat("Progress: ", i * 2, "% done \n", paste(format(Sys.time(), "%Y-%m-%d %H:%M:%S")), "\n", sep = "")
-    
+    cat("Progress: ", paste(ii, "of", nloops, "loops completed."), "\n", 
+        paste(format(Sys.time(), "%Y-%m-%d %H:%M:%S")), "\n", sep = "")
     sink()
   }
+    
+    # update progress
+    sink("progress.txt", append = T)
+    cat("\nModel finished!\n\nBuilding results table...\n",
+        sep = "")
+    sink()
   
-  # get the mean of Rhats
-  Rhat <- Rhat/50
+  ## 3.6 Save outputs ####
   
-  ## 3.3 Save outputs ####
-  
-  jags_output_names <- c("jags_output", "scalar.dat", "n.eff", "Rhat")
+  jags_output_names <- c("jags_output", "scalar.dat", "nloops", "end_time")
   jags_outputs <-
     ls(pattern = paste0("^", paste(jags_output_names, collapse = "|")))
   save(list = jags_outputs,
@@ -860,13 +880,26 @@ runModel <- function(file_path) {
   
   ### 4.2.1 bayesian ####
   
-  jags_table <-
-    rjags_to_table(jags_output, scalar.dat, total.scalar.dat, year.ID, EPU.ID, stratum.ID)
-  
-  model_results <- jags_table %>%
+  jags_table <- NULL
+  for(ii in 1:nloops){
+    tmp <- rjags_to_table(jags_output[[ii]], scalar.dat, total.scalar.dat, year.ID, EPU.ID, stratum.ID)
+    tmp$loopID <- ii
+    jags_table <- rbind.data.frame(jags_table, tmp)
+  }
+  # get medians of all values
+  jags_table_medians <- jags_table %>%
+    group_by(year, EPU, stratum) %>%
+    summarise(
+      across(c(Model:n.eff),
+             ~ median(.x, na.rm = TRUE)), 
+      .groups = "drop"
+    ) %>%
+    mutate(across(c(Model:ucl_50, n.eff), ~round(.x,0)))
+    
+  model_results <- jags_table_medians %>%
     select(year:Model) %>%
     pivot_wider(names_from = stratum, values_from = Model) %>%
-    inner_join(jags_table %>% filter(stratum=="total") %>% select(-stratum, -Model), by=c("year", "EPU"))
+    inner_join(jags_table_medians %>% filter(stratum=="total") %>% select(-stratum, -Model), by=c("year", "EPU"))
     
   
   ### 4.2.2 standard ####
@@ -963,7 +996,7 @@ runModel <- function(file_path) {
   
   # update progress
   sink("progress.txt", append = T)
-  cat("\nModel finished!\n\nResults will start downloading shortly.\n",
+  cat("\nResults ready!\n\nFile will start downloading shortly.\n",
       sep = "")
   sink()
   
