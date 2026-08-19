@@ -431,51 +431,10 @@ runModel <- function(file_path) {
       inner_join(obs, eff %>% select(year, EPU, ID), by = c(c("subunit" = "EPU"), "year")) %>%
       mutate(subunits = ID,
              .keep = "unused")
-    
-    ## 1.7 Telem adjustment ####
-    #including telemetry obs helps some EPUs but hurts others -> depends on effect on average group size
-    
-    group <- obs %>%
-      group_by(subunit, stratum) %>%
-      summarize(avg_group = mean(y))
-    
-    # if keeping telems brings avg groupsize closer to EPU's total average, then keep them
-    telem.stats <- obs %>%
-      ungroup() %>%
-      group_by(year, subunit, stratum, survey.type) %>%
-      summarize(n = n(),
-                count = sum(y)) %>%
-      ungroup() %>%
-      pivot_wider(names_from = survey.type,
-                  values_from = c(n, count)) %>%
-      mutate(
-        n_telem = replace_na(n_Telemetry, 0),
-        n_nontelem = replace_na(n_Inventory, 0),
-        count_telem = replace_na(count_Telemetry, 0),
-        count_nontelem = replace_na(count_Inventory, 0),
-        .keep = "unused"
-      ) %>%
-      filter(count_telem > 0) %>%
-      mutate(
-        avg_group_nontelem = (count_nontelem / n_nontelem),
-        avg_group_telem = (count_telem + count_nontelem) / (n_telem + n_nontelem)
-      ) %>%
-      left_join(group, by = c("subunit", "stratum")) %>%
-      mutate(keep_telem = if_else(
-        abs(avg_group_telem - avg_group) >= abs(avg_group_nontelem - avg_group),
-        F,
-        T
-      ))
-    
-    # add telem direction to obs
-    obs <-
-      left_join(
-        obs,
-        telem.stats %>% select(year, subunit, stratum, keep_telem),
-        by = c("year", "subunit", "stratum")
-      ) %>%
-      filter(!(survey.type == "Telemetry" & keep_telem == F))
-    
+
+    # Finally, remove telemetry detections from detection-only dataset
+    obs <- obs %>% filter(survey.type!="Telemetry")
+
     # 2 PREPARE DATA -------------------------------------------------------------
 
     ## 2.1 Sight.dat ####
