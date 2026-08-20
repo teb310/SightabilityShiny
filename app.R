@@ -237,7 +237,7 @@ server <- function(input, output, session) {
   observeEvent(input$run_script, {
     rv$results_file <- NULL
     system2("Rscript",
-            args = c("model_stratified.R", file_path()),
+            args = c("FE_joint_model.R", file_path()),
             wait = F)
   })
   # Show console outputs

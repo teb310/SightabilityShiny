@@ -17,35 +17,23 @@ model
   }
     
 # Priors for psi
-  ## Coefficients are vaguely defined (normal about zero)
-    b0psi ~ dnorm(0,0.04)
-    b1psi ~ dnorm(0,0.04)
-    b2psi ~ dnorm(0,0.04)
-    b3psi ~ dnorm(0,0.04)
-    b4psi ~ dnorm(0,0.04)
-    b5psi ~ dnorm(0,0.04)
-    b6psi ~ dnorm(0,0.04)
-	  b7psi ~ dnorm(0,0.04)
+    ## Coefficients are vaguely defined (normal about zero) - 1 for each spline
+          b1psi ~ dnorm(0,0.04)
+          b2psi ~ dnorm(0,0.04)
+          b3psi ~ dnorm(0,0.04)
 
-	## We need 4 dummy variables because we have 5 strata (calf, spike, bull, cow, unclassified)
-    dummy1h <- c(1,0,0,0,0)
-    dummy2h <- c(0,1,0,0,0)
-    dummy3h <- c(0,0,1,0,0)
-    dummy4h <- c(0,0,0,1,0)
-	  dummy5h <- c(0,0,0,0,1)
-
+    ## We need dummy variables for each stratum
+    for(i in 1:Nstrata){
+        b_strata[i] ~ dnorm(0,0.04)
+    }
 
   for(k in 1:Nyears){
     for(i in 1:Nstrata){ 	# for each stratum-year
       logit.mu[i,k] <- 		# mean probability of inclusion in population 
-        b0psi*dummy1h[i] + 	# stratum-specific intercept
+        b_strata[i] + 	# stratum-specific intercept
         b1psi*splines[k,1] + 	# basis vector from natural cubic spline
         b2psi*splines[k,2] + 	# basis vector from natural cubic spline
-        b3psi*splines[k,3] + 	# basis vector from natural cubic spline
-        b4psi*dummy2h[i] + 	# stratum-specific intercept
-        b5psi*dummy3h[i] + 	# stratum-specific intercept
-	      b6psi*dummy4h[i] +	# stratum-specific intercept
-	      b7psi*dummy5h[i] 	# stratum-specific intercept
+        b3psi*splines[k,3] 	# basis vector from natural cubic spline
 
 	  ## Hyperpriors for alpha psi and beta psi
       mu.psi[i,k] <- exp(logit.mu[i,k])/(1+exp(logit.mu[i,k]))
@@ -59,13 +47,13 @@ model
   }
 
 # The probability that each group "belongs to N" (data augmentation)
-  for(i in 1:Nsubunits.yr){
+  for(i in 1:Nstrata.subunit.yr){
     psi[i] ~ dbeta(alpha.psi[h.plots[i],yr.plots[i]], beta.psi[h.plots[i],yr.plots[i]]) T(0.0001,0.99)
   }
 
 
-# Priors for groupsize - make dependent on subunit and stratum (but sample all years)
-  for (m in 1:Nsubunits) {
+# Priors for groupsize - make dependent on year and stratum (but sample all subunits)
+  for (m in 1:Nyears) {
     for (p in 1:Nstrata) {
       loglam[p, m] ~ dnorm(0, 0.1)  T(-10, 10)
       lam[p, m] <- exp(loglam[p, m])
@@ -76,14 +64,14 @@ model
 # Final likelihoods
   for (t in 1:Ngroups) {
 	  x[t] ~ dbeta(alpha.voc[h[t],yr[t]],beta.voc[h[t],yr[t]])	T(0,0.999) 	# voc is beta distribution
-    q[t] ~ dbin(psi[subunits[t]], 1) 	# whether or not group belongs to population is binomial based on psi
+    q[t] ~ dbin(psi[plot[t]], 1) 	# whether or not group belongs to population is binomial based on psi
     g[t] <- exp(bo + bvoc * x[t])/(1 + exp(bo + bvoc * x[t])) 	# probability of seeing group given voc
     pseen[t] <- q[t] * g[t] 	# probability of seeing group is 0 if group doesn't belong to population
     z[t] ~ dbin(pseen[t], 1) 	# final determination of whether augmented group is seen
 
     ## Negative binomial distribution for group size (minus 1)
-	  p.nb[t] <- r[h[t], subunits[t]] / (r[h[t], subunits[t]] + lam[h[t], subunits[t]]) 	# defining shape for dnbinom
-    ym1[t] ~ dnbinom(p.nb[t], r[h[t], subunits[t]]) 	# group size is negative binomial
+	  p.nb[t] <- r[h[t], yr[t]] / (r[h[t], yr[t]] + lam[h[t], yr[t]]) 	# defining shape for dnbinom
+    ym1[t] ~ dnbinom(p.nb[t], r[h[t], yr[t]]) 	# group size is negative binomial
     y[t] <- ym1[t] + 1	# add 1 to get final group size 
 
   	## Group size is 1*y if group is part of population and zero otherwise
@@ -91,14 +79,14 @@ model
  }
 
 # Defining ranges for calculating abundance per subunit-stratum-year
-  for (u in 1:Nstrat.subunits.yr) { 	# for each subunit-stratum-year
+  for (u in 1:Nstrata.subunit.yr) { 	# for each subunit-stratum-year
   	t[u] <- scalars[u,1] 	# 'from' value is in first column
   	d[u] <- scalars[u,2] 	# 'to' value in second column
   	tau.hat[u] <- sum(taus[c(t[u]:d[u])])	# sum up group sizes per subunit-stratum-year
   }
 
 # Defining ranges for calculating abundance per subunit-year (ignoring strata)
-  for (v in 1:Nsubunits.yr) {	# for each subunit-year
+  for (v in 1:Nsubunit.yr) {	# for each subunit-year
   	u[v] <- total.scalars[v,1]	# 'from' value is in first column
   	w[v] <- total.scalars[v,2]	# 'to' value in second column
   	total.tau.hat[v] <- sum(taus[c(u[v]:w[v])])	# sum up group sizes per subunit-year
